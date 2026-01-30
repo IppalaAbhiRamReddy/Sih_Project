@@ -1,13 +1,45 @@
-import React from 'react';
+import React from "react";
 
-export function Input({ label, className, ...props }) {
+export const Input = ({
+    label,
+    id,
+    type = "text",
+    placeholder,
+    value,
+    onChange,
+    required = false,
+    ...props
+}) => {
     return (
-        <div className="space-y-1.5">
-            {label && <label className="text-sm font-semibold text-gray-700">{label}</label>}
+        <div className="space-y-2">
+            {label && (
+                <label
+                    htmlFor={id}
+                    className="text-sm font-semibold text-gray-700"
+                >
+                    {label}
+                </label>
+            )}
+
             <input
-                className={`w-full h-11 px-4 rounded-lg border border-gray-200 bg-gray-50 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all ${className}`}
+                id={id}
+                type={type}
+                placeholder={placeholder}
+                value={value}
+                onChange={onChange}
+                required={required}
                 {...props}
+                className="
+          w-full rounded-md border border-gray-300
+          px-3 py-2 text-sm text-gray-900
+          placeholder:text-gray-400
+          bg-white
+          transition-shadow outline-none
+          focus:ring-2 focus:ring-blue-100
+          focus:border-blue-500
+          disabled:pointer-events-none disabled:opacity-50
+        "
             />
         </div>
     );
-}
+};

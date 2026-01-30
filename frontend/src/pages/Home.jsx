@@ -6,8 +6,7 @@ import {
     FileText,
     Activity,
     Users,
-    Lock,
-    CheckCircle
+    Lock
 } from 'lucide-react';
 
 export default function Home() {
@@ -40,75 +39,75 @@ export default function Home() {
                     </div>
                     <button
                         onClick={handleLogin}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg font-medium transition-colors"
+                        data-slot="button"
+                        className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive h-9 py-2 has-[>svg]:px-3 bg-blue-600 hover:bg-blue-700 text-white px-6"
                     >
                         Login
                     </button>
                 </div>
             </header>
 
-            {/* Hero Section */}
-            <section className="pt-24 pb-16 text-center px-4">
-                <div className="max-w-4xl mx-auto">
-                    <h1 className="text-5xl font-bold text-gray-900 mb-6 leading-tight">
-                        Secure & Centralized Patient Health Records
-                    </h1>
-                    <p className="text-xl text-gray-500 mb-10 max-w-2xl mx-auto leading-relaxed">
-                        A comprehensive digital health care system that stores lifelong electronic health records with
-                        role-based access control, ensuring data security and seamless multi-hospital coordination.
+            {/* Main Content */}
+            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-12">
+                {/* Hero Section */}
+                <div className="text-center max-w-3xl mx-auto">
+                    <h2 className="text-4xl font-semibold text-gray-900 mb-4">
+                        Secure &amp; Centralized Patient Health Records
+                    </h2>
+
+                    <p className="text-lg text-gray-600 mb-8">
+                        A comprehensive digital health care system that stores lifelong
+                        electronic health records with role-based access control, ensuring data
+                        security and seamless multi-hospital coordination.
                     </p>
+
                     <button
                         onClick={handleLogin}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3.5 rounded-lg font-semibold text-lg shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-0.5"
+                        data-slot="button"
+                        className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive h-9 has-[>svg]:px-3 bg-blue-600 hover:bg-blue-700 text-white px-8 py-6 text-lg"
                     >
                         Get Started
                     </button>
                 </div>
-            </section>
 
-            {/* Features Grid */}
-            <section className="py-20 bg-gray-50/50">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                        <FeatureCard
-                            icon={Database}
-                            title="Centralized Records"
-                            desc="All patient health records in one secure location accessible across hospitals."
-                        />
-                        <FeatureCard
-                            icon={Shield}
-                            title="Role-Based Access"
-                            desc="Strict access controls ensure data security and patient privacy."
-                        />
-                        <FeatureCard
-                            icon={FileText}
-                            title="Lifelong History"
-                            desc="Complete medical history maintained throughout patient lifetime."
-                        />
-                        <FeatureCard
-                            icon={Activity}
-                            title="Real-Time Updates"
-                            desc="Instant access to latest diagnoses, prescriptions, and lab reports."
-                        />
-                        <FeatureCard
-                            icon={Users}
-                            title="Multi-Hospital Access"
-                            desc="Seamless data sharing between authorized healthcare providers."
-                        />
-                        <FeatureCard
-                            icon={Lock}
-                            title="Audit Logging"
-                            desc="Complete transparency with detailed activity tracking and accountability."
-                        />
-                    </div>
+                {/* Features Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    <FeatureCard
+                        icon={Database}
+                        title="Centralized Records"
+                        desc="All patient health records in one secure location accessible across hospitals."
+                    />
+                    <FeatureCard
+                        icon={Shield}
+                        title="Role-Based Access"
+                        desc="Strict access controls ensure data security and patient privacy."
+                    />
+                    <FeatureCard
+                        icon={FileText}
+                        title="Lifelong History"
+                        desc="Complete medical history maintained throughout patient lifetime."
+                    />
+                    <FeatureCard
+                        icon={Activity}
+                        title="Real-Time Updates"
+                        desc="Instant access to latest diagnoses, prescriptions, and lab reports."
+                    />
+                    <FeatureCard
+                        icon={Users}
+                        title="Multi-Hospital Access"
+                        desc="Seamless data sharing between authorized healthcare providers."
+                    />
+                    <FeatureCard
+                        icon={Lock}
+                        title="Audit Logging"
+                        desc="Complete transparency with detailed activity tracking and accountability."
+                    />
                 </div>
-            </section>
 
-            {/* Key Benefits Section */}
-            <section className="py-24 bg-[#F0FDF4]">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-                    <h2 className="text-3xl font-bold text-gray-900 mb-12">Key Benefits</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-10 max-w-5xl mx-auto text-left">
+                {/* Key Benefits Section */}
+                <div className="bg-gradient-to-br from-blue-50 to-teal-50 rounded-2xl p-8 md:p-12 shadow-sm border border-blue-100">
+                    <h2 className="text-3xl font-bold text-gray-900 mb-12 text-center">Key Benefits</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-10">
                         {[
                             { title: "Improved Continuity of Care", desc: "Access complete patient history for better treatment decisions" },
                             { title: "Reduced Duplicate Tests", desc: "Eliminate unnecessary procedures with accessible test results" },
@@ -117,33 +116,25 @@ export default function Home() {
                         ].map((item, i) => (
                             <div key={i} className="flex gap-4">
                                 <div className="flex-shrink-0">
-                                    <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center">
-                                        <CheckCircle className="w-5 h-5 text-white" />
+                                    <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0 mt-1">
+                                        <span className="text-white font-semibold">✓</span>
                                     </div>
                                 </div>
                                 <div>
                                     <h3 className="font-bold text-gray-900 text-lg mb-1">{item.title}</h3>
-                                    <p className="text-gray-600">{item.desc}</p>
+                                    <p className="text-gray-600 leading-relaxed">{item.desc}</p>
                                 </div>
                             </div>
                         ))}
                     </div>
                 </div>
-            </section>
+            </main>
 
             {/* Footer */}
-            <footer className="bg-white py-12 border-t border-gray-100">
-                <div className="max-w-7xl mx-auto px-4 text-center">
-                    <p className="text-gray-500 text-sm">
-                        © 2026 Digital Health Care Record System. All rights reserved.
-                    </p>
-                    <div className="mt-4 flex justify-center gap-6 text-xs text-gray-400">
-                        <span>Secure</span>
-                        <span>•</span>
-                        <span>Compliant</span>
-                        <span>•</span>
-                        <span>Patient-Centric</span>
-                    </div>
+            <footer className="border-t border-gray-200 bg-gray-50 py-8 mt-12">
+                <div className="max-w-7xl mx-auto px-8 text-center text-gray-600">
+                    <p>© 2024 Digital Health Care Record System. All rights reserved.</p>
+                    <p className="mt-2 text-sm">Secure • Compliant • Patient-Centric</p>
                 </div>
             </footer>
         </div>

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Building2,
+    Shield,
     UserPlus,
     Users,
     AlertTriangle,
@@ -11,26 +12,16 @@ import {
     CheckCircle,
     Plus,
     Search,
-    TrendingUp,
-    Info
+    Filter,
+    Brain
 } from 'lucide-react';
-import {
-    LineChart,
-    Line,
-    XAxis,
-    YAxis,
-    CartesianGrid,
-    Tooltip,
-    ResponsiveContainer,
-    PieChart,
-    Pie,
-    Cell
-} from 'recharts';
+
 import { Modal } from '../../components/ui/Modal';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
 import { Toggle } from '../../components/ui/Toggle';
+import AiAnalytics from './AiAnalytics';
 
 export default function HospitalDashboard() {
     const navigate = useNavigate();
@@ -63,23 +54,36 @@ export default function HospitalDashboard() {
     ]);
 
     const departmentOptions = departments.map(d => ({ value: d.name, label: d.name }));
+    const filterDeptOptions = [{ value: 'All', label: 'All Departments' }, ...departmentOptions];
 
-    // Analytics Data
-    const loadForecastData = [
-        { name: 'Today', card: 65, gen: 85, orth: 45, ent: 30 },
-        { name: '+7d', card: 70, gen: 88, orth: 48, ent: 32 },
-        { name: '+14d', card: 80, gen: 95, orth: 52, ent: 35 },
-        { name: '+21d', card: 120, gen: 140, orth: 85, ent: 58 },
-        { name: '+30d', card: 155, gen: 170, orth: 90, ent: 60 },
-    ];
+    const [deptSearch, setDeptSearch] = useState('');
+    const [doctorSearch, setDoctorSearch] = useState('');
+    const [doctorDeptFilter, setDoctorDeptFilter] = useState('All');
+    const [staffSearch, setStaffSearch] = useState('');
+    const [staffDeptFilter, setStaffDeptFilter] = useState('All');
 
-    const diseaseData = [
-        { name: 'Flu', value: 32, color: '#3B82F6' },
-        { name: 'Diabetes', value: 21, color: '#10B981' },
-        { name: 'Hypertension', value: 18, color: '#F59E0B' },
-        { name: 'Respiratory Infections', value: 14, color: '#8B5CF6' },
-        { name: 'Others', value: 15, color: '#6B7280' },
-    ];
+    // Modal Form State
+    const [newDoctorDept, setNewDoctorDept] = useState('');
+    const [newStaffDept, setNewStaffDept] = useState('');
+
+    const filteredDepartments = departments.filter(d =>
+        d.name.toLowerCase().includes(deptSearch.toLowerCase()) ||
+        d.id.toLowerCase().includes(deptSearch.toLowerCase())
+    );
+
+    const filteredDoctors = doctors.filter(d =>
+        (doctorDeptFilter === 'All' || d.dept === doctorDeptFilter) &&
+        (d.name.toLowerCase().includes(doctorSearch.toLowerCase()) ||
+            d.id.toLowerCase().includes(doctorSearch.toLowerCase()))
+    );
+
+    const filteredStaff = staff.filter(s =>
+        (staffDeptFilter === 'All' || s.dept === staffDeptFilter) &&
+        (s.name.toLowerCase().includes(staffSearch.toLowerCase()) ||
+            s.id.toLowerCase().includes(staffSearch.toLowerCase()))
+    );
+
+    // Analytics Data - Moved to AiAnalytics.jsx
 
     const handleLogout = () => {
         navigate('/login');
@@ -215,261 +219,255 @@ export default function HospitalDashboard() {
                     </div>
                 </div>
 
-                {/* Tabs */}
-                <div className="flex gap-2 mb-8 bg-gray-100/50 p-1.5 rounded-xl w-fit">
-                    {['Departments', 'Doctors', 'Staff', 'AI Analytics'].map((tab) => {
-                        const id = tab.toLowerCase().replace(' ', '');
-                        const isActive = activeTab === id;
-                        return (
-                            <button
-                                key={id}
-                                onClick={() => setActiveTab(id)}
-                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${isActive
+                <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
+                    {/* Tabs */}
+                    <div className="bg-gray-100 p-1 rounded-xl flex items-center">
+                        {['Departments', 'Doctors', 'Staff', 'AI Analytics'].map((tab) => {
+                            const id = tab.toLowerCase().replace(' ', '');
+                            const isActive = activeTab === id;
+                            return (
+                                <button
+                                    key={id}
+                                    onClick={() => setActiveTab(id)}
+                                    className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${isActive
                                         ? 'bg-white text-gray-900 shadow-sm'
                                         : 'text-gray-500 hover:text-gray-700'
-                                    }`}
-                            >
-                                {tab === 'AI Analytics' ? (
-                                    <div className="flex items-center gap-2">
-                                        <Activity className="w-4 h-4" />
-                                        {tab}
-                                    </div>
-                                ) : tab}
-                            </button>
-                        );
-                    })}
+                                        }`}
+                                >
+                                    {tab === 'AI Analytics' ? (
+                                        <div className="flex items-center gap-2">
+                                            <Brain className="w-4 h-4" />
+                                            {tab}
+                                        </div>
+                                    ) : tab}
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {/* Hospital Authority Badge */}
+                    <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 px-4 py-2 rounded-full">
+                        <Shield className="w-4 h-4 text-blue-700" />
+                        <span className="text-xs font-bold text-blue-700 tracking-wider">HOSPITAL AUTHORITY</span>
+                    </div>
                 </div>
 
                 {/* Tab Content */}
-                <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden animate-fade-in">
+                <div className="bg-white border border-gray-200 rounded-xl shadow-sm animate-fade-in">
 
                     {/* Departments Tab */}
                     {activeTab === 'departments' && (
                         <>
-                            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white">
-                                <div>
-                                    <h3 className="font-bold text-gray-900 text-lg">Department Management</h3>
-                                    <p className="text-sm text-gray-500">Create and organize hospital departments</p>
+                            <div className="p-6 border-b border-gray-100 bg-white space-y-4">
+                                <div className="flex justify-between items-center">
+                                    <div>
+                                        <h3 className="font-bold text-gray-900 text-lg">Department Management</h3>
+                                        <p className="text-sm text-gray-500">Create and organize hospital departments</p>
+                                    </div>
+                                    <button
+                                        onClick={() => setIsDeptModalOpen(true)}
+                                        className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2.5 rounded-lg font-medium transition-colors"
+                                    >
+                                        <Plus className="w-5 h-5" />
+                                        Add Department
+                                    </button>
                                 </div>
-                                <button
-                                    onClick={() => setIsDeptModalOpen(true)}
-                                    className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2.5 rounded-lg font-medium transition-colors"
-                                >
-                                    <Plus className="w-5 h-5" />
-                                    Add Department
-                                </button>
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                    <input
+                                        type="text"
+                                        placeholder="Search departments..."
+                                        value={deptSearch}
+                                        onChange={(e) => setDeptSearch(e.target.value)}
+                                        className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-100 focus:border-purple-500"
+                                    />
+                                </div>
                             </div>
-                            <table className="w-full">
-                                <thead className="bg-gray-50 text-left">
-                                    <tr>
-                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Department ID</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Department Name</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Head of Department</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Doctors</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Staff</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100">
-                                    {departments.map((dept) => (
-                                        <tr key={dept.id} className="hover:bg-gray-50/50">
-                                            <td className="px-6 py-4 text-sm font-medium text-gray-900">{dept.id}</td>
-                                            <td className="px-6 py-4 text-sm text-gray-600">{dept.name}</td>
-                                            <td className="px-6 py-4 text-sm text-gray-500">{dept.head}</td>
-                                            <td className="px-6 py-4 text-sm text-gray-600">{dept.doctors}</td>
-                                            <td className="px-6 py-4 text-sm text-gray-600">{dept.staff}</td>
-                                            <td className="px-6 py-4">
-                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                                    Active
-                                                </span>
-                                            </td>
+                            <div className="max-h-[500px] overflow-y-auto">
+                                <table className="w-full">
+                                    <thead className="bg-gray-50 text-left sticky top-0 z-10">
+                                        <tr>
+                                            <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Department ID</th>
+                                            <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Department Name</th>
+                                            <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Head of Department</th>
+                                            <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Doctors</th>
+                                            <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Staff</th>
+                                            <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Status</th>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {filteredDepartments.map((dept) => (
+                                            <tr key={dept.id} className="hover:bg-gray-50/50">
+                                                <td className="px-6 py-4 text-sm font-medium text-gray-900">{dept.id}</td>
+                                                <td className="px-6 py-4 text-sm text-gray-600">{dept.name}</td>
+                                                <td className="px-6 py-4 text-sm text-gray-500">{dept.head}</td>
+                                                <td className="px-6 py-4 text-sm text-gray-600">{dept.doctors}</td>
+                                                <td className="px-6 py-4 text-sm text-gray-600">{dept.staff}</td>
+                                                <td className="px-6 py-4">
+                                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                                        Active
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
                         </>
                     )}
 
                     {/* Doctors Tab */}
                     {activeTab === 'doctors' && (
                         <>
-                            <div className="p-6 border-b border-gray-100 bg-white">
-                                <h3 className="font-bold text-gray-900 text-lg">Doctor Management</h3>
-                                <p className="text-sm text-gray-500">Manage doctor accounts and permissions</p>
+                            <div className="p-6 border-b border-gray-100 bg-white space-y-4">
+                                <div className="flex justify-between items-center">
+                                    <div>
+                                        <h3 className="font-bold text-gray-900 text-lg">Doctor Management</h3>
+                                        <p className="text-sm text-gray-500">Manage doctor accounts and permissions</p>
+                                    </div>
+                                </div>
+                                <div className="flex gap-4">
+                                    <div className="relative flex-1">
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                        <input
+                                            type="text"
+                                            placeholder="Search doctors..."
+                                            value={doctorSearch}
+                                            onChange={(e) => setDoctorSearch(e.target.value)}
+                                            className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-100 focus:border-purple-500"
+                                        />
+                                    </div>
+                                    <div className="w-64">
+                                        <Select
+                                            value={doctorDeptFilter}
+                                            onChange={setDoctorDeptFilter}
+                                            options={filterDeptOptions}
+                                            placeholder="Filter by Department"
+                                            className="search-select"
+                                        />
+                                    </div>
+                                </div>
                             </div>
-                            <table className="w-full">
-                                <thead className="bg-gray-50 text-left">
-                                    <tr>
-                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Doctor ID</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Name</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Department</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Specialization</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Join Date</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Account Status</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100">
-                                    {doctors.map((doc) => (
-                                        <tr key={doc.id} className="hover:bg-gray-50/50">
-                                            <td className="px-6 py-4 text-sm font-medium text-gray-900">{doc.id}</td>
-                                            <td className="px-6 py-4 text-sm text-gray-900 flex items-center gap-2">
-                                                {doc.name}
-                                                <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded uppercase font-bold tracking-wider">Doctor</span>
-                                            </td>
-                                            <td className="px-6 py-4 text-sm text-gray-600">{doc.dept}</td>
-                                            <td className="px-6 py-4 text-sm text-gray-500">{doc.spec}</td>
-                                            <td className="px-6 py-4 text-sm text-gray-500">{doc.join}</td>
-                                            <td className="px-6 py-4">
-                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${doc.active ? 'bg-green-50 text-green-700 border-green-100' : 'bg-gray-50 text-gray-600 border-gray-200'
-                                                    }`}>
-                                                    <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${doc.active ? 'bg-green-500' : 'bg-gray-400'}`} />
-                                                    {doc.active ? 'Active' : 'Disabled'}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <Toggle checked={doc.active} onChange={() => handleToggleDoctor(doc.id)} />
-                                            </td>
+                            <div className="max-h-[500px] overflow-y-auto">
+                                <table className="w-full">
+                                    <thead className="bg-gray-50 text-left sticky top-0 z-10">
+                                        <tr>
+                                            <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Doctor ID</th>
+                                            <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Name</th>
+                                            <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Department</th>
+                                            <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Specialization</th>
+                                            <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Join Date</th>
+                                            <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Account Status</th>
+                                            <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Actions</th>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {filteredDoctors.map((doc) => (
+                                            <tr key={doc.id} className="hover:bg-gray-50/50">
+                                                <td className="px-6 py-4 text-sm font-medium text-gray-900">{doc.id}</td>
+                                                <td className="px-6 py-4 text-sm text-gray-900 flex items-center gap-2">
+                                                    {doc.name}
+                                                    <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded uppercase font-bold tracking-wider">Doctor</span>
+                                                </td>
+                                                <td className="px-6 py-4 text-sm text-gray-600">{doc.dept}</td>
+                                                <td className="px-6 py-4 text-sm text-gray-500">{doc.spec}</td>
+                                                <td className="px-6 py-4 text-sm text-gray-500">{doc.join}</td>
+                                                <td className="px-6 py-4">
+                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${doc.active ? 'bg-green-50 text-green-700 border-green-100' : 'bg-gray-50 text-gray-600 border-gray-200'
+                                                        }`}>
+                                                        <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${doc.active ? 'bg-green-500' : 'bg-gray-400'}`} />
+                                                        {doc.active ? 'Active' : 'Disabled'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <Toggle checked={doc.active} onChange={() => handleToggleDoctor(doc.id)} />
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
                         </>
                     )}
 
                     {/* Staff Tab */}
                     {activeTab === 'staff' && (
                         <>
-                            <div className="p-6 border-b border-gray-100 bg-white">
-                                <h3 className="font-bold text-gray-900 text-lg">Staff Management</h3>
-                                <p className="text-sm text-gray-500">Manage staff accounts and permissions</p>
+                            <div className="p-6 border-b border-gray-100 bg-white space-y-4">
+                                <div className="flex justify-between items-center">
+                                    <div>
+                                        <h3 className="font-bold text-gray-900 text-lg">Staff Management</h3>
+                                        <p className="text-sm text-gray-500">Manage staff accounts and permissions</p>
+                                    </div>
+                                </div>
+                                <div className="flex gap-4">
+                                    <div className="relative flex-1">
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                        <input
+                                            type="text"
+                                            placeholder="Search staff..."
+                                            value={staffSearch}
+                                            onChange={(e) => setStaffSearch(e.target.value)}
+                                            className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-100 focus:border-purple-500"
+                                        />
+                                    </div>
+                                    <div className="w-64">
+                                        <Select
+                                            value={staffDeptFilter}
+                                            onChange={setStaffDeptFilter}
+                                            options={filterDeptOptions}
+                                            placeholder="Filter by Department"
+                                            className="search-select"
+                                        />
+                                    </div>
+                                </div>
                             </div>
-                            <table className="w-full">
-                                <thead className="bg-gray-50 text-left">
-                                    <tr>
-                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Staff ID</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Name</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Department</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Role</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Join Date</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Account Status</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100">
-                                    {staff.map((s) => (
-                                        <tr key={s.id} className="hover:bg-gray-50/50">
-                                            <td className="px-6 py-4 text-sm font-medium text-gray-900">{s.id}</td>
-                                            <td className="px-6 py-4 text-sm text-gray-900 flex items-center gap-2">
-                                                {s.name}
-                                                <span className="text-[10px] bg-green-50 text-green-600 px-1.5 py-0.5 rounded uppercase font-bold tracking-wider">Staff</span>
-                                            </td>
-                                            <td className="px-6 py-4 text-sm text-gray-600">{s.dept}</td>
-                                            <td className="px-6 py-4 text-sm text-gray-500">{s.role}</td>
-                                            <td className="px-6 py-4 text-sm text-gray-500">{s.join}</td>
-                                            <td className="px-6 py-4">
-                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${s.active ? 'bg-green-50 text-green-700 border-green-100' : 'bg-gray-50 text-gray-600 border-gray-200'
-                                                    }`}>
-                                                    <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${s.active ? 'bg-green-500' : 'bg-gray-400'}`} />
-                                                    {s.active ? 'Active' : 'Disabled'}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <Toggle checked={s.active} onChange={() => handleToggleStaff(s.id)} />
-                                            </td>
+                            <div className="max-h-[500px] overflow-y-auto">
+                                <table className="w-full">
+                                    <thead className="bg-gray-50 text-left sticky top-0 z-10">
+                                        <tr>
+                                            <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Staff ID</th>
+                                            <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Name</th>
+                                            <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Department</th>
+                                            <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Role</th>
+                                            <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Join Date</th>
+                                            <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Account Status</th>
+                                            <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Actions</th>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {filteredStaff.map((s) => (
+                                            <tr key={s.id} className="hover:bg-gray-50/50">
+                                                <td className="px-6 py-4 text-sm font-medium text-gray-900">{s.id}</td>
+                                                <td className="px-6 py-4 text-sm text-gray-900 flex items-center gap-2">
+                                                    {s.name}
+                                                    <span className="text-[10px] bg-green-50 text-green-600 px-1.5 py-0.5 rounded uppercase font-bold tracking-wider">Staff</span>
+                                                </td>
+                                                <td className="px-6 py-4 text-sm text-gray-600">{s.dept}</td>
+                                                <td className="px-6 py-4 text-sm text-gray-500">{s.role}</td>
+                                                <td className="px-6 py-4 text-sm text-gray-500">{s.join}</td>
+                                                <td className="px-6 py-4">
+                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${s.active ? 'bg-green-50 text-green-700 border-green-100' : 'bg-gray-50 text-gray-600 border-gray-200'
+                                                        }`}>
+                                                        <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${s.active ? 'bg-green-500' : 'bg-gray-400'}`} />
+                                                        {s.active ? 'Active' : 'Disabled'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <Toggle checked={s.active} onChange={() => handleToggleStaff(s.id)} />
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
                         </>
                     )}
 
                     {/* AI Analytics Tab */}
+                    {/* AI Analytics Tab */}
                     {activeTab === 'aianalytics' && (
-                        <div className="p-8 space-y-8">
-                            {/* Info Box */}
-                            <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex items-start gap-3">
-                                <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
-                                <div>
-                                    <h4 className="font-bold text-blue-900 text-sm">AI analytics support hospital planning and preventive care.</h4>
-                                    <p className="text-xs text-blue-700">This dashboard does NOT provide diagnosis or patient-level insights.</p>
-                                </div>
-                            </div>
-
-                            {/* Chart 1: Forecast */}
-                            <div>
-                                <div className="flex justify-between items-center mb-6">
-                                    <div>
-                                        <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                                            <TrendingUp className="w-5 h-5 text-purple-600" />
-                                            Department Load Forecast
-                                        </h3>
-                                        <p className="text-sm text-gray-500">Predicted patient load for the next 7-30 days</p>
-                                    </div>
-                                    <div className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-bold">
-                                        AI Prediction
-                                    </div>
-                                </div>
-                                <div className="h-80 w-full">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <LineChart data={loadForecastData}>
-                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: 12 }} dy={10} />
-                                            <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: 12 }} />
-                                            <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                                            <Line type="monotone" dataKey="card" stroke="#3B82F6" strokeWidth={3} dot={{ r: 4 }} name="Cardiology" />
-                                            <Line type="monotone" dataKey="gen" stroke="#10B981" strokeWidth={3} dot={{ r: 4 }} name="General Medicine" />
-                                            <Line type="monotone" dataKey="orth" stroke="#F59E0B" strokeWidth={3} dot={{ r: 4 }} name="Orthopedics" />
-                                            <Line type="monotone" dataKey="ent" stroke="#8B5CF6" strokeWidth={3} dot={{ r: 4 }} name="ENT" />
-                                        </LineChart>
-                                    </ResponsiveContainer>
-                                </div>
-                            </div>
-
-                            {/* Chart 2: Disease Status */}
-                            <div className="bg-white rounded-xl border border-gray-100 p-6 flex flex-col md:flex-row gap-8 items-center">
-                                <div className="flex-1">
-                                    <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-2">
-                                        <Activity className="w-5 h-5 text-purple-600" />
-                                        Disease Trend Distribution
-                                    </h3>
-                                    <p className="text-sm text-gray-500 mb-6">Top diagnosis categories for the selected time period</p>
-                                    <div className="h-64 relative">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <PieChart>
-                                                <Pie
-                                                    data={diseaseData}
-                                                    innerRadius={60}
-                                                    outerRadius={80}
-                                                    paddingAngle={5}
-                                                    dataKey="value"
-                                                >
-                                                    {diseaseData.map((entry, index) => (
-                                                        <Cell key={`cell-${index}`} fill={entry.color} />
-                                                    ))}
-                                                </Pie>
-                                                <Tooltip />
-                                            </PieChart>
-                                        </ResponsiveContainer>
-                                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                            <span className="text-2xl font-bold text-gray-900">Top Conditions</span>
-                                            <span className="text-xs text-gray-500">Last 30 Days</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="w-full md:w-72 space-y-4">
-                                    {diseaseData.map((d) => (
-                                        <div key={d.name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: d.color }} />
-                                                <span className="text-sm font-medium text-gray-700">{d.name}</span>
-                                            </div>
-                                            <span className="text-sm font-bold text-gray-900">{d.value}%</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
+                        <AiAnalytics />
                     )}
                 </div>
             </main>
@@ -502,17 +500,18 @@ export default function HospitalDashboard() {
             {/* Modal: Register Doctor */}
             <Modal
                 isOpen={isDoctorModalOpen}
-                onClose={() => setIsDoctorModalOpen(false)}
+                onClose={() => { setIsDoctorModalOpen(false); setNewDoctorDept(''); }}
                 title="Register New Doctor"
             >
-                <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); setIsDoctorModalOpen(false); }}>
+                <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); setIsDoctorModalOpen(false); setNewDoctorDept(''); }}>
                     <Input label="Doctor Name *" placeholder="Dr. John Doe" required />
                     <Input label="Email *" type="email" placeholder="doctor@hospital.com" required />
                     <Select
                         label="Department *"
                         placeholder="Select department"
                         options={departmentOptions}
-                        onChange={() => { }}
+                        value={newDoctorDept}
+                        onChange={setNewDoctorDept}
                     />
 
                     <Button type="submit" className="bg-purple-600 hover:bg-purple-700 mt-6">
@@ -524,17 +523,18 @@ export default function HospitalDashboard() {
             {/* Modal: Register Staff */}
             <Modal
                 isOpen={isStaffModalOpen}
-                onClose={() => setIsStaffModalOpen(false)}
+                onClose={() => { setIsStaffModalOpen(false); setNewStaffDept(''); }}
                 title="Register New Staff"
             >
-                <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); setIsStaffModalOpen(false); }}>
+                <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); setIsStaffModalOpen(false); setNewStaffDept(''); }}>
                     <Input label="Staff Name *" placeholder="Jane Doe" required />
                     <Input label="Email *" type="email" placeholder="staff@hospital.com" required />
                     <Select
                         label="Department *"
                         placeholder="Select department"
                         options={departmentOptions}
-                        onChange={() => { }}
+                        value={newStaffDept}
+                        onChange={setNewStaffDept}
                     />
 
                     <Button type="submit" className="bg-purple-600 hover:bg-purple-700 mt-6">

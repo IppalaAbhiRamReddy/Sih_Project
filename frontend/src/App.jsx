@@ -4,6 +4,10 @@ import Home from './pages/Home';
 import Login from './pages/Login';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import HospitalDashboard from './pages/hospital/HospitalDashboard';
+import StaffDashboard from './pages/staff/StaffDashboard';
+
+import DoctorDashboard from './pages/doctor/DoctorDashboard';
+import PatientDashboard from './pages/patient/PatientDashboard';
 
 // Placeholder for Dashboards (until we build them)
 const DashboardPlaceholder = () => {
@@ -33,6 +37,9 @@ function App() {
         {/* Role Routes */}
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/hospital" element={<HospitalDashboard />} />
+        <Route path="/staff" element={<StaffDashboard />} />
+        <Route path="/doctor" element={<DoctorDashboard />} />
+        <Route path="/patient" element={<PatientDashboard />} />
 
         {/* Placeholder Routes for other Roles */}
         <Route path="/:role" element={<DashboardPlaceholder />} />
