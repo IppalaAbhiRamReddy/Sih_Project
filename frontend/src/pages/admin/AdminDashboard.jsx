@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Shield,
@@ -14,8 +14,10 @@ import {
     Mail,
     MapPin,
     Calendar,
-    Hash
+    Hash,
+    Loader
 } from 'lucide-react';
+import { adminService } from '../../services/api';
 import { Modal } from '../../components/ui/Modal';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
@@ -27,21 +29,61 @@ export default function AdminDashboard() {
     const [selectedHospital, setSelectedHospital] = useState(null);
 
     // Mock Data
-    const [hospitals, setHospitals] = useState([
-        { id: 'HA001', name: 'City General Hospital', date: '2024-01-15', active: true, email: 'admin@citygeneral.com', phone: '+1 555-0101', address: '123 Healthcare Blvd, Medical District, NY 10001' },
-        { id: 'HA002', name: 'St. Mary\'s Medical', date: '2024-02-20', active: true, email: 'contact@stmarys.org', phone: '+1 555-0102', address: '456 Saint Mary St, Downtown, CA 90012' },
-        { id: 'HA003', name: 'Metro Health Center', date: '2024-03-10', active: true, email: 'support@metrohealth.com', phone: '+1 555-0103', address: '789 Metro Ave, Uptown, IL 60614' },
-        { id: 'HA004', name: 'Community Care', date: '2024-12-20', active: false, email: 'info@communitycare.org', phone: '+1 555-0104', address: '321 Community Ln, Suburbia, TX 75001' },
-        { id: 'HA005', name: 'Westside Medical', date: '2024-04-05', active: true, email: 'admin@westside.med', phone: '+1 555-0105', address: '654 Westside Dr, West End, WA 98101' },
-        { id: 'HA006', name: 'Eastside Clinic', date: '2024-05-12', active: true, email: 'contact@eastside.clinic', phone: '+1 555-0106', address: '987 Eastside Rd, East End, MA 02110' },
-        { id: 'HA007', name: 'North Health', date: '2024-06-18', active: false, email: 'admin@northhealth.org', phone: '+1 555-0107', address: '159 North Way, Northside, FL 33101' },
-        { id: 'HA008', name: 'South General', date: '2024-07-22', active: true, email: 'info@southgeneral.com', phone: '+1 555-0108', address: '753 South Blvd, Southside, GA 30303' },
-    ]);
+    const [loading, setLoading] = useState(true);
+    const [hospitals, setHospitals] = useState([]);
+    const [registerFormData, setRegisterFormData] = useState({
+        name: '',
+        email: '',
+        phone: '',
+        address: ''
+    });
+    const [systemStats, setSystemStats] = useState({ totalUsers: 0 });
 
-    const handleToggle = (id) => {
-        setHospitals(hospitals.map(h =>
-            h.id === id ? { ...h, active: !h.active } : h
-        ));
+    useEffect(() => {
+        fetchHospitals();
+    }, []);
+
+    const fetchHospitals = async () => {
+        try {
+            setLoading(true);
+            const [hospitlaData, statsData] = await Promise.all([
+                adminService.getHospitals(),
+                adminService.getSystemStats()
+            ]);
+            setHospitals(hospitlaData);
+            setSystemStats(statsData);
+        } catch (error) {
+            console.error("Failed to fetch hospitals", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleToggle = async (id) => {
+        try {
+            await adminService.toggleHospitalStatus(id);
+            // Optimistic update or refresh
+            setHospitals(hospitals.map(h =>
+                h.id === id ? { ...h, active: !h.active } : h
+            ));
+        } catch (error) {
+            console.error("Failed to toggle status", error);
+            alert("Failed to update status");
+        }
+    };
+
+    const handleRegister = async (e) => {
+        e.preventDefault();
+        try {
+            await adminService.registerHospital(registerFormData);
+            setIsRegisterOpen(false);
+            setRegisterFormData({ name: '', email: '', phone: '', address: '' });
+            fetchHospitals();
+            alert("Hospital authority registered successfully");
+        } catch (error) {
+            console.error("Registration failed", error);
+            alert("Failed to register hospital");
+        }
     };
 
     const handleLogout = () => {
@@ -181,7 +223,7 @@ export default function AdminDashboard() {
                                 <Users className="w-5 h-5 text-purple-600" />
                             </div>
                         </div>
-                        <h3 className="text-2xl font-bold text-gray-900 mb-1">712</h3>
+                        <h3 className="text-2xl font-bold text-gray-900 mb-1">{systemStats.totalUsers}</h3>
                         <p className="text-sm text-gray-500">Total System Users</p>
                     </div>
                 </div>
@@ -248,22 +290,41 @@ export default function AdminDashboard() {
                 </div>
             </main>
 
-            {/* Registration Modal */}
             <Modal
                 isOpen={isRegisterOpen}
                 onClose={() => setIsRegisterOpen(false)}
                 title="Register New Hospital Authority"
             >
-                <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); setIsRegisterOpen(false); }}>
-                    <Input label="Hospital Name" placeholder="Enter hospital name" required />
-                    <Input label="Contact Email" type="email" placeholder="admin@hospital.com" required />
-                    <Input label="Contact Phone" placeholder="+1 555-0100" />
+                <form className="space-y-4" onSubmit={handleRegister}>
+                    <Input
+                        label="Hospital Name"
+                        placeholder="Enter hospital name"
+                        required
+                        value={registerFormData.name}
+                        onChange={(e) => setRegisterFormData({ ...registerFormData, name: e.target.value })}
+                    />
+                    <Input
+                        label="Contact Email"
+                        type="email"
+                        placeholder="admin@hospital.com"
+                        required
+                        value={registerFormData.email}
+                        onChange={(e) => setRegisterFormData({ ...registerFormData, email: e.target.value })}
+                    />
+                    <Input
+                        label="Contact Phone"
+                        placeholder="+1 555-0100"
+                        value={registerFormData.phone}
+                        onChange={(e) => setRegisterFormData({ ...registerFormData, phone: e.target.value })}
+                    />
                     <div className="space-y-1.5">
                         <label className="text-sm font-semibold text-gray-700">Address *</label>
                         <textarea
                             className="w-full h-24 px-4 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all resize-none"
                             placeholder="Hospital address"
                             required
+                            value={registerFormData.address}
+                            onChange={(e) => setRegisterFormData({ ...registerFormData, address: e.target.value })}
                         />
                     </div>
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Users,
@@ -16,6 +16,7 @@ import { Modal } from '../../components/ui/Modal';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
+import { staffService, patientService } from '../../services/api';
 
 export default function StaffDashboard() {
     const navigate = useNavigate();
@@ -31,39 +32,71 @@ export default function StaffDashboard() {
         contact: '', email: '', address: '', emergencyContact: ''
     });
     const [editFormData, setEditFormData] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [recentRegistrations, setRecentRegistrations] = useState([]);
+    const [stats, setStats] = useState({
+        today: 0,
+        week: 0,
+        month: 0,
+        total: 0
+    });
 
-    // Mock Data
-    const recentRegistrations = [
-        { id: 'HID123456', name: 'John Anderson', age: 45, gender: 'Male', contact: '+1 555-0101', date: '2026-01-02', by: 'Staff (You)' },
-        { id: 'HID123457', name: 'Sarah Williams', age: 32, gender: 'Female', contact: '+1 555-0102', date: '2026-01-02', by: 'Staff (You)' },
-        { id: 'HID123458', name: 'Michael Brown', age: 58, gender: 'Male', contact: '+1 555-0103', date: '2026-01-01', by: 'Staff (Carol M.)' },
-        { id: 'HID123459', name: 'Emily Davis', age: 28, gender: 'Female', contact: '+1 555-0104', date: '2026-01-01', by: 'Staff (You)' },
-        { id: 'HID123460', name: 'David Martinez', age: 51, gender: 'Male', contact: '+1 555-0105', date: '2025-12-31', by: 'Staff (James K.)' },
-    ];
+    useEffect(() => {
+        fetchDashboardData();
+    }, []);
+
+    const fetchDashboardData = async () => {
+        try {
+            setLoading(true);
+            const [registrationsData, statsData] = await Promise.all([
+                staffService.getRecentRegistrations(),
+                staffService.getStats()
+            ]);
+            setRecentRegistrations(registrationsData);
+            setStats(statsData);
+        } catch (error) {
+            console.error("Failed to fetch dashboard data", error);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const handleLogout = () => {
         navigate('/login');
     };
 
-    const handleRegister = (e) => {
+    const handleRegister = async (e) => {
         e.preventDefault();
-        setIsRegisterOpen(false);
-        // Simulate ID generation
-        const newId = `HID${Math.floor(100000 + Math.random() * 900000)}`;
-        setSuccessState({ isOpen: true, type: 'register', data: { id: newId } });
-        // Reset form
-        setRegisterFormData({
-            firstName: '', lastName: '', age: '', gender: '', bloodGroup: '',
-            contact: '', email: '', address: '', emergencyContact: ''
-        });
+        try {
+            const response = await patientService.registerPatient(registerFormData);
+            setIsRegisterOpen(false);
+            setSuccessState({ isOpen: true, type: 'register', data: { id: response.id || 'NEW_ID' } }); // Adjust based on actual API response
+
+            // Reset form
+            setRegisterFormData({
+                firstName: '', lastName: '', age: '', gender: '', bloodGroup: '',
+                contact: '', email: '', address: '', emergencyContact: ''
+            });
+            fetchDashboardData(); // Refresh list
+        } catch (error) {
+            console.error("Registration failed", error);
+            alert("Failed to register patient");
+        }
     };
 
-    const handleEditSubmit = (e) => {
+    const handleEditSubmit = async (e) => {
         e.preventDefault();
-        setIsEditOpen(false);
-        setSuccessState({ isOpen: true, type: 'edit', data: { name: editFormData.name } });
-        setSelectedPatient(null);
-        setEditFormData(null);
+        try {
+            await patientService.updatePatient(selectedPatient.id, editFormData);
+            setIsEditOpen(false);
+            setSuccessState({ isOpen: true, type: 'edit', data: { name: editFormData.name } });
+            setSelectedPatient(null);
+            setEditFormData(null);
+            fetchDashboardData(); // Refresh list
+        } catch (error) {
+            console.error("Update failed", error);
+            alert("Failed to update patient");
+        }
     };
 
     const initiateEdit = (patient) => {
@@ -72,10 +105,10 @@ export default function StaffDashboard() {
             ...patient,
             firstName: patient.name.split(' ')[0],
             lastName: patient.name.split(' ').slice(1).join(' '),
-            bloodGroup: 'O+', // Default for mock
-            email: 'patient@email.com', // Default for mock
-            address: '123 Oak Street', // Default for mock
-            emergencyContact: 'Jane Doe - +1 555-0199' // Default for mock
+            bloodGroup: patient.bloodGroup || '',
+            email: patient.email || '',
+            address: patient.address || '',
+            emergencyContact: patient.emergencyContact || ''
         });
     };
 
@@ -164,7 +197,7 @@ export default function StaffDashboard() {
                     <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between">
                         <div>
                             <p className="text-sm font-medium text-gray-500 mb-1">Today's Registrations</p>
-                            <h3 className="text-3xl font-bold text-gray-900">8</h3>
+                            <h3 className="text-3xl font-bold text-gray-900">{stats.today}</h3>
                         </div>
                         <div className="p-3 bg-green-50 rounded-lg">
                             <UserPlus className="w-6 h-6 text-green-600" />
@@ -174,7 +207,7 @@ export default function StaffDashboard() {
                     <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between">
                         <div>
                             <p className="text-sm font-medium text-gray-500 mb-1">This Week</p>
-                            <h3 className="text-3xl font-bold text-gray-900">52</h3>
+                            <h3 className="text-3xl font-bold text-gray-900">{stats.week}</h3>
                         </div>
                         <div className="p-3 bg-blue-50 rounded-lg">
                             <Activity className="w-6 h-6 text-blue-600" />
@@ -184,7 +217,7 @@ export default function StaffDashboard() {
                     <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between">
                         <div>
                             <p className="text-sm font-medium text-gray-500 mb-1">This Month</p>
-                            <h3 className="text-3xl font-bold text-gray-900">218</h3>
+                            <h3 className="text-3xl font-bold text-gray-900">{stats.month}</h3>
                         </div>
                         <div className="p-3 bg-purple-50 rounded-lg">
                             <CheckSquare className="w-6 h-6 text-purple-600" />
@@ -194,7 +227,7 @@ export default function StaffDashboard() {
                     <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between">
                         <div>
                             <p className="text-sm font-medium text-gray-500 mb-1">Your Registrations</p>
-                            <h3 className="text-3xl font-bold text-gray-900">145</h3>
+                            <h3 className="text-3xl font-bold text-gray-900">{stats.total}</h3>
                         </div>
                         <div className="p-3 bg-orange-50 rounded-lg">
                             <Users className="w-6 h-6 text-orange-600" />

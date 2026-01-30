@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     TrendingUp,
     Activity,
@@ -19,11 +19,18 @@ import {
     Legend
 } from 'recharts';
 import { Select } from '../../components/ui/Select';
+import { hospitalService } from '../../services/api';
+import { Loader } from 'lucide-react';
 
 export default function AiAnalytics() {
     // State for filters
     const [timeRange, setTimeRange] = useState('30days');
     const [selectedDept, setSelectedDept] = useState('all');
+    const [loading, setLoading] = useState(true);
+
+    const [loadForecastData, setLoadForecastData] = useState([]);
+    const [diseaseData, setDiseaseData] = useState([]);
+    const [departmentStatus, setDepartmentStatus] = useState([]);
 
     // Filter Options
     const timeOptions = [
@@ -40,29 +47,46 @@ export default function AiAnalytics() {
         { value: 'ent', label: 'ENT' },
     ];
 
-    // Analytics Data
-    const loadForecastData = [
-        { name: 'Today', card: 65, gen: 85, orth: 45, ent: 30 },
-        { name: '+7d', card: 70, gen: 88, orth: 48, ent: 32 },
-        { name: '+14d', card: 80, gen: 95, orth: 52, ent: 35 },
-        { name: '+21d', card: 120, gen: 140, orth: 85, ent: 58 },
-        { name: '+30d', card: 155, gen: 170, orth: 90, ent: 60 },
-    ];
+    React.useEffect(() => {
+        fetchAnalytics();
+    }, [timeRange, selectedDept]);
 
-    const diseaseData = [
-        { name: 'Flu', value: 32, color: '#60A5FA' }, // Blue-400
-        { name: 'Diabetes', value: 21, color: '#34D399' }, // Emerald-400
-        { name: 'Hypertension', value: 18, color: '#FBBF24' }, // Amber-400
-        { name: 'Respiratory Infections', value: 14, color: '#A78BFA' }, // Violet-400
-        { name: 'Others', value: 15, color: '#9CA3AF' }, // Gray-400
-    ];
+    const fetchAnalytics = async () => {
+        try {
+            setLoading(true);
+            // In a real app, departmentStatus might also come from an API
+            const [forecast, diseases] = await Promise.all([
+                hospitalService.getAnalyticsForecast(timeRange),
+                hospitalService.getAnalyticsDiseaseDistribution(timeRange, selectedDept)
+            ]);
 
-    const departmentStatus = [
-        { name: 'Cardiology', status: 'High', percent: 88, color: 'text-red-500', dot: '🔴' },
-        { name: 'General Medicine', status: 'High', percent: 85, color: 'text-red-500', dot: '🔴' },
-        { name: 'Orthopedics', status: 'Moderate', percent: 72, color: 'text-orange-500', dot: '🟡' },
-        { name: 'ENT', status: 'Normal', percent: 45, color: 'text-green-500', dot: '🟢' },
-    ];
+            setLoadForecastData(forecast);
+            setDiseaseData(diseases);
+
+            // Mocking status update for now as it wasn't in the original plan but good to keep dynamic if possible
+            // Re-using the static status for visual consistency unless backend provides it
+            setDepartmentStatus([
+                { name: 'Cardiology', status: 'High', percent: 88, color: 'text-red-500', dot: '🔴' },
+                { name: 'General Medicine', status: 'High', percent: 85, color: 'text-red-500', dot: '🔴' },
+                { name: 'Orthopedics', status: 'Moderate', percent: 72, color: 'text-orange-500', dot: '🟡' },
+                { name: 'ENT', status: 'Normal', percent: 45, color: 'text-green-500', dot: '🟢' },
+            ]);
+
+        } catch (error) {
+            console.error("Failed to fetch analytics", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (loading) {
+        return (
+            <div className="flex flex-col items-center justify-center h-96">
+                <Loader className="w-12 h-12 text-blue-600 animate-spin mb-4" />
+                <p className="text-gray-500 font-medium">Loading analytics data...</p>
+            </div>
+        );
+    }
 
     return (
         <div className="p-8 space-y-8 animate-fade-in">

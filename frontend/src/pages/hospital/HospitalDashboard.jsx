@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Building2,
@@ -22,6 +22,7 @@ import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
 import { Toggle } from '../../components/ui/Toggle';
 import AiAnalytics from './AiAnalytics';
+import { hospitalService } from '../../services/api';
 
 export default function HospitalDashboard() {
     const navigate = useNavigate();
@@ -30,29 +31,18 @@ export default function HospitalDashboard() {
     const [isDoctorModalOpen, setIsDoctorModalOpen] = useState(false);
     const [isStaffModalOpen, setIsStaffModalOpen] = useState(false);
 
-    // Mock Data
-    const [departments] = useState([
-        { id: 'DEPT001', name: 'Cardiology', head: 'Dr. Sarah Johnson', doctors: 12, staff: 35, active: true },
-        { id: 'DEPT002', name: 'General Medicine', head: 'Dr. Michael Chen', doctors: 8, staff: 24, active: true },
-        { id: 'DEPT003', name: 'Orthopedics', head: 'Dr. James Brown', doctors: 15, staff: 42, active: true },
-        { id: 'DEPT004', name: 'ENT', head: 'Dr. Emily Williams', doctors: 10, staff: 28, active: true },
-        { id: 'DEPT005', name: 'Emergency', head: 'Dr. Robert Davis', doctors: 18, staff: 55, active: true },
-    ]);
+    const [loading, setLoading] = useState(true);
+    const [departments, setDepartments] = useState([]);
+    const [doctors, setDoctors] = useState([]);
+    const [staff, setStaff] = useState([]);
+    const [stats, setStats] = useState({ doctors: 0, staff: 0, active: 0 });
 
-    const [doctors, setDoctors] = useState([
-        { id: 'DOC001', name: 'Dr. Sarah Johnson', dept: 'Cardiology', spec: 'Interventional Cardiology', join: '2023-05-10', active: true },
-        { id: 'DOC002', name: 'Dr. Michael Chen', dept: 'General Medicine', spec: 'General Physician', join: '2023-06-15', active: true },
-        { id: 'DOC003', name: 'Dr. Emily Williams', dept: 'ENT', spec: 'ENT Specialist', join: '2023-07-20', active: true },
-        { id: 'DOC004', name: 'Dr. James Brown', dept: 'Orthopedics', spec: 'Orthopedic Surgeon', join: '2023-08-05', active: false },
-    ]);
+    // Form States
+    const [newDeptData, setNewDeptData] = useState({ id: '', name: '', head: '', doctors: 0, staff: 0 });
+    const [newDoctorData, setNewDoctorData] = useState({ name: '', email: '', dept: '' });
+    const [newStaffData, setNewStaffData] = useState({ name: '', email: '', dept: '' });
 
-    const [staff, setStaff] = useState([
-        { id: 'STAFF001', name: 'Alice Smith', dept: 'Cardiology', role: 'Nurse', join: '2023-04-12', active: true },
-        { id: 'STAFF002', name: 'Bob Wilson', dept: 'Emergency', role: 'Paramedic', join: '2023-05-18', active: true },
-        { id: 'STAFF003', name: 'Carol Martinez', dept: 'ENT', role: 'Registration Staff', join: '2023-06-22', active: true },
-        { id: 'STAFF004', name: 'David Lee', dept: 'Orthopedics', role: 'Lab Technician', join: '2023-07-30', active: false },
-    ]);
-
+    // Filters
     const departmentOptions = departments.map(d => ({ value: d.name, label: d.name }));
     const filterDeptOptions = [{ value: 'All', label: 'All Departments' }, ...departmentOptions];
 
@@ -61,10 +51,6 @@ export default function HospitalDashboard() {
     const [doctorDeptFilter, setDoctorDeptFilter] = useState('All');
     const [staffSearch, setStaffSearch] = useState('');
     const [staffDeptFilter, setStaffDeptFilter] = useState('All');
-
-    // Modal Form State
-    const [newDoctorDept, setNewDoctorDept] = useState('');
-    const [newStaffDept, setNewStaffDept] = useState('');
 
     const filteredDepartments = departments.filter(d =>
         d.name.toLowerCase().includes(deptSearch.toLowerCase()) ||
@@ -83,18 +69,92 @@ export default function HospitalDashboard() {
             s.id.toLowerCase().includes(staffSearch.toLowerCase()))
     );
 
-    // Analytics Data - Moved to AiAnalytics.jsx
+    useEffect(() => {
+        fetchDashboardData();
+    }, []);
+
+    const fetchDashboardData = async () => {
+        try {
+            setLoading(true);
+            const [deptData, docData, staffData, statsData] = await Promise.all([
+                hospitalService.getDepartments(),
+                hospitalService.getDoctors(),
+                hospitalService.getStaff(),
+                hospitalService.getStats()
+            ]);
+            setDepartments(deptData);
+            setDoctors(docData);
+            setStaff(staffData);
+            setStats(statsData);
+        } catch (error) {
+            console.error("Failed to fetch dashboard data", error);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const handleLogout = () => {
         navigate('/login');
     };
 
-    const handleToggleDoctor = (id) => {
-        setDoctors(doctors.map(d => d.id === id ? { ...d, active: !d.active } : d));
+    const handleToggleDoctor = async (id) => {
+        try {
+            await hospitalService.toggleDoctorStatus(id);
+            setDoctors(doctors.map(d => d.id === id ? { ...d, active: !d.active } : d));
+        } catch (error) {
+            console.error("Failed to toggle doctor status", error);
+        }
     };
 
-    const handleToggleStaff = (id) => {
-        setStaff(staff.map(s => s.id === id ? { ...s, active: !s.active } : s));
+    const handleToggleStaff = async (id) => {
+        try {
+            await hospitalService.toggleStaffStatus(id);
+            setStaff(staff.map(s => s.id === id ? { ...s, active: !s.active } : s));
+        } catch (error) {
+            console.error("Failed to toggle staff status", error);
+        }
+    };
+
+    const handleAddDepartment = async (e) => {
+        e.preventDefault();
+        try {
+            await hospitalService.addDepartment(newDeptData);
+            setIsDeptModalOpen(false);
+            setNewDeptData({ id: '', name: '', head: '', doctors: 0, staff: 0 });
+            fetchDashboardData();
+            alert("Department added successfully");
+        } catch (error) {
+            console.error("Failed to add department", error);
+            alert("Failed to add department");
+        }
+    };
+
+    const handleRegisterDoctor = async (e) => {
+        e.preventDefault();
+        try {
+            await hospitalService.registerDoctor(newDoctorData);
+            setIsDoctorModalOpen(false);
+            setNewDoctorData({ name: '', email: '', dept: '' });
+            fetchDashboardData();
+            alert("Doctor registered successfully");
+        } catch (error) {
+            console.error("Failed to register doctor", error);
+            alert("Failed to register doctor");
+        }
+    };
+
+    const handleRegisterStaff = async (e) => {
+        e.preventDefault();
+        try {
+            await hospitalService.registerStaff(newStaffData);
+            setIsStaffModalOpen(false);
+            setNewStaffData({ name: '', email: '', dept: '' });
+            fetchDashboardData();
+            alert("Staff registered successfully");
+        } catch (error) {
+            console.error("Failed to register staff", error);
+            alert("Failed to register staff");
+        }
     };
 
 
@@ -191,7 +251,7 @@ export default function HospitalDashboard() {
                     <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between">
                         <div>
                             <p className="text-sm font-medium text-gray-500 mb-1">Total Doctors</p>
-                            <h3 className="text-3xl font-bold text-gray-900">63</h3>
+                            <h3 className="text-3xl font-bold text-gray-900">{stats.doctors}</h3>
                         </div>
                         <div className="p-3 bg-blue-50 rounded-lg">
                             <Stethoscope className="w-6 h-6 text-blue-600" />
@@ -201,7 +261,7 @@ export default function HospitalDashboard() {
                     <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between">
                         <div>
                             <p className="text-sm font-medium text-gray-500 mb-1">Total Staff</p>
-                            <h3 className="text-3xl font-bold text-gray-900">184</h3>
+                            <h3 className="text-3xl font-bold text-gray-900">{stats.staff}</h3>
                         </div>
                         <div className="p-3 bg-green-50 rounded-lg">
                             <Users className="w-6 h-6 text-green-600" />
@@ -211,7 +271,7 @@ export default function HospitalDashboard() {
                     <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between">
                         <div>
                             <p className="text-sm font-medium text-gray-500 mb-1">Active Today</p>
-                            <h3 className="text-3xl font-bold text-gray-900">217</h3>
+                            <h3 className="text-3xl font-bold text-gray-900">{stats.active}</h3>
                         </div>
                         <div className="p-3 bg-orange-50 rounded-lg">
                             <Activity className="w-6 h-6 text-orange-600" />
@@ -478,13 +538,41 @@ export default function HospitalDashboard() {
                 onClose={() => setIsDeptModalOpen(false)}
                 title="Add New Department"
             >
-                <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); setIsDeptModalOpen(false); }}>
-                    <Input label="Department ID *" placeholder="DEPT006" required />
-                    <Input label="Department Name *" placeholder="e.g. Cardiology" required />
-                    <Input label="Head of Department *" placeholder="Dr. Sarah Johnson" required />
+                <form className="space-y-4" onSubmit={handleAddDepartment}>
+                    <Input
+                        label="Department ID *"
+                        placeholder="DEPT006"
+                        required
+                        value={newDeptData.id}
+                        onChange={(e) => setNewDeptData({ ...newDeptData, id: e.target.value })}
+                    />
+                    <Input
+                        label="Department Name *"
+                        placeholder="e.g. Cardiology"
+                        required
+                        value={newDeptData.name}
+                        onChange={(e) => setNewDeptData({ ...newDeptData, name: e.target.value })}
+                    />
+                    <Input
+                        label="Head of Department *"
+                        placeholder="Dr. Sarah Johnson"
+                        required
+                        value={newDeptData.head}
+                        onChange={(e) => setNewDeptData({ ...newDeptData, head: e.target.value })}
+                    />
                     <div className="grid grid-cols-2 gap-4">
-                        <Input label="Doctors" placeholder="0" />
-                        <Input label="Staff" placeholder="0" />
+                        <Input
+                            label="Doctors"
+                            placeholder="0"
+                            value={newDeptData.doctors}
+                            onChange={(e) => setNewDeptData({ ...newDeptData, doctors: e.target.value })}
+                        />
+                        <Input
+                            label="Staff"
+                            placeholder="0"
+                            value={newDeptData.staff}
+                            onChange={(e) => setNewDeptData({ ...newDeptData, staff: e.target.value })}
+                        />
                     </div>
 
                     <div className="bg-blue-50 p-4 rounded-lg text-sm text-blue-700 mb-4">
@@ -500,18 +588,31 @@ export default function HospitalDashboard() {
             {/* Modal: Register Doctor */}
             <Modal
                 isOpen={isDoctorModalOpen}
-                onClose={() => { setIsDoctorModalOpen(false); setNewDoctorDept(''); }}
+                onClose={() => { setIsDoctorModalOpen(false); setNewDoctorData({ name: '', email: '', dept: '' }); }}
                 title="Register New Doctor"
             >
-                <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); setIsDoctorModalOpen(false); setNewDoctorDept(''); }}>
-                    <Input label="Doctor Name *" placeholder="Dr. John Doe" required />
-                    <Input label="Email *" type="email" placeholder="doctor@hospital.com" required />
+                <form className="space-y-4" onSubmit={handleRegisterDoctor}>
+                    <Input
+                        label="Doctor Name *"
+                        placeholder="Dr. John Doe"
+                        required
+                        value={newDoctorData.name}
+                        onChange={(e) => setNewDoctorData({ ...newDoctorData, name: e.target.value })}
+                    />
+                    <Input
+                        label="Email *"
+                        type="email"
+                        placeholder="doctor@hospital.com"
+                        required
+                        value={newDoctorData.email}
+                        onChange={(e) => setNewDoctorData({ ...newDoctorData, email: e.target.value })}
+                    />
                     <Select
                         label="Department *"
                         placeholder="Select department"
                         options={departmentOptions}
-                        value={newDoctorDept}
-                        onChange={setNewDoctorDept}
+                        value={newDoctorData.dept}
+                        onChange={(val) => setNewDoctorData({ ...newDoctorData, dept: val })}
                     />
 
                     <Button type="submit" className="bg-purple-600 hover:bg-purple-700 mt-6">
@@ -523,18 +624,31 @@ export default function HospitalDashboard() {
             {/* Modal: Register Staff */}
             <Modal
                 isOpen={isStaffModalOpen}
-                onClose={() => { setIsStaffModalOpen(false); setNewStaffDept(''); }}
+                onClose={() => { setIsStaffModalOpen(false); setNewStaffData({ name: '', email: '', dept: '' }); }}
                 title="Register New Staff"
             >
-                <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); setIsStaffModalOpen(false); setNewStaffDept(''); }}>
-                    <Input label="Staff Name *" placeholder="Jane Doe" required />
-                    <Input label="Email *" type="email" placeholder="staff@hospital.com" required />
+                <form className="space-y-4" onSubmit={handleRegisterStaff}>
+                    <Input
+                        label="Staff Name *"
+                        placeholder="Jane Doe"
+                        required
+                        value={newStaffData.name}
+                        onChange={(e) => setNewStaffData({ ...newStaffData, name: e.target.value })}
+                    />
+                    <Input
+                        label="Email *"
+                        type="email"
+                        placeholder="staff@hospital.com"
+                        required
+                        value={newStaffData.email}
+                        onChange={(e) => setNewStaffData({ ...newStaffData, email: e.target.value })}
+                    />
                     <Select
                         label="Department *"
                         placeholder="Select department"
                         options={departmentOptions}
-                        value={newStaffDept}
-                        onChange={setNewStaffDept}
+                        value={newStaffData.dept}
+                        onChange={(val) => setNewStaffData({ ...newStaffData, dept: val })}
                     />
 
                     <Button type="submit" className="bg-purple-600 hover:bg-purple-700 mt-6">

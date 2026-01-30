@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Search,
@@ -16,8 +16,10 @@ import {
     LogOut,
     Eye,
     X,
-    Calendar
+    Calendar,
+    Loader
 } from 'lucide-react';
+import { patientService, doctorService } from '../../services/api';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Modal } from '../../components/ui/Modal';
@@ -29,47 +31,47 @@ export default function DoctorDashboard() {
     const [activeTab, setActiveTab] = useState('visits');
     const [isAddVisitOpen, setIsAddVisitOpen] = useState(false);
 
-    // Mock Patient Data
-    const MOCK_PATIENT = {
-        id: "HID123456",
-        name: "John Anderson",
-        age: 45,
-        gender: "Male",
-        bloodGroup: "O+",
-        contact: "+1 555-0101",
-        allergies: ["Penicillin", "Peanuts"],
-        chronicConditions: ["Hypertension"],
-        visits: [
-            {
-                id: 1, date: "2024-12-15", specialty: "Cardiology", type: "READ-ONLY",
-                doctor: "Dr. Sarah Johnson", diagnosis: "Hypertension - Stage 1",
-                prescription: "Amlodipine 5mg - Once daily",
-                notes: "Patient shows elevated blood pressure. Lifestyle modifications recommended."
-            },
-            {
-                id: 2, date: "2024-11-20", specialty: "General Medicine", type: "READ-ONLY",
-                doctor: "Dr. Michael Chen", diagnosis: "Seasonal Flu",
-                prescription: "Paracetamol 500mg - Thrice daily for 5 days",
-                notes: "Patient presented with fever and body ache. Advised rest and hydration."
-            }
-        ],
-        prescriptions: [
-            { name: "Amlodipine 5mg - Once daily", date: "2024-12-15", doctor: "Dr. Sarah Johnson" },
-            { name: "Paracetamol 500mg - Thrice daily for 5 days", date: "2024-11-20", doctor: "Dr. Michael Chen" }
-        ],
-        labReports: [
-            { name: "Complete Blood Count", date: "2024-12-10", status: "Normal" },
-            { name: "Lipid Profile", date: "2024-12-10", status: "Borderline High" }
-        ]
+    const [loading, setLoading] = useState(false);
+    const [visitFormData, setVisitFormData] = useState({
+        diagnosis: '',
+        prescription: '',
+        notes: '',
+        nextVisit: ''
+    });
+
+    const handleSearch = async (e) => {
+        e.preventDefault();
+        try {
+            setLoading(true);
+            // In a real scenario, this might return a list or a single patient.
+            // Assuming getPatientDetails returns the full profile including history.
+            const data = await patientService.getPatientDetails(searchQuery);
+            setPatient(data);
+        } catch (error) {
+            console.error("Search failed", error);
+            alert("Patient not found or error occurred.");
+            setPatient(null);
+        } finally {
+            setLoading(false);
+        }
     };
 
-    const handleSearch = (e) => {
-        e.preventDefault();
-        // Simulate search logic - in real app, fetch from backend
-        if (searchQuery.toUpperCase() === 'HID123456') {
-            setPatient(MOCK_PATIENT);
-        } else {
-            alert('Patient not found. Try HID123456');
+    const handleSaveVisit = async () => {
+        if (!patient) return;
+        try {
+            await doctorService.addVisit({
+                ...visitFormData,
+                patientId: patient.id
+            });
+            alert("Visit recorded successfully.");
+            setIsAddVisitOpen(false);
+            setVisitFormData({ diagnosis: '', prescription: '', notes: '', nextVisit: '' });
+            // Refresh patient data
+            const data = await patientService.getPatientDetails(patient.id);
+            setPatient(data);
+        } catch (error) {
+            console.error("Failed to save visit", error);
+            alert("Failed to save visit record.");
         }
     };
 
@@ -103,9 +105,10 @@ export default function DoctorDashboard() {
                         </button>
                         <button
                             onClick={() => setIsAddVisitOpen(true)}
-                            className="w-full flex items-center gap-3 px-4 h-10 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+                            disabled={!patient}
+                            className={`w-full flex items-center gap-3 px-4 h-10 text-sm font-medium bg-white border border-gray-200 rounded-xl transition-colors ${!patient ? 'opacity-50 cursor-not-allowed text-gray-400' : 'text-gray-700 hover:bg-gray-50'}`}
                         >
-                            <Plus className="w-5 h-5 text-gray-500" />
+                            <Plus className={`w-5 h-5 ${!patient ? 'text-gray-400' : 'text-gray-500'}`} />
                             Add New Visit
                         </button>
                     </div>
@@ -423,12 +426,20 @@ export default function DoctorDashboard() {
                 <div className="space-y-4">
                     <div className="space-y-2">
                         <label className="text-sm font-semibold text-gray-700">Diagnosis</label>
-                        <Input placeholder="Enter primary diagnosis" />
+                        <Input
+                            placeholder="Enter primary diagnosis"
+                            value={visitFormData.diagnosis}
+                            onChange={(e) => setVisitFormData({ ...visitFormData, diagnosis: e.target.value })}
+                        />
                     </div>
 
                     <div className="space-y-2">
                         <label className="text-sm font-semibold text-gray-700">Prescription</label>
-                        <Input placeholder="Medicine Name, dosage, duration" />
+                        <Input
+                            placeholder="Medicine Name, dosage, duration"
+                            value={visitFormData.prescription}
+                            onChange={(e) => setVisitFormData({ ...visitFormData, prescription: e.target.value })}
+                        />
                     </div>
 
                     <div className="space-y-2">
@@ -436,13 +447,21 @@ export default function DoctorDashboard() {
                         <textarea
                             placeholder="Additional notes and observations"
                             className="w-full h-32 px-3 py-2 text-sm text-gray-900 bg-white border border-gray-300 rounded-md focus:ring-2 focus:ring-teal-100 focus:border-teal-500 outline-none resize-none placeholder:text-gray-400"
+                            value={visitFormData.notes}
+                            onChange={(e) => setVisitFormData({ ...visitFormData, notes: e.target.value })}
                         />
                     </div>
 
                     <div className="space-y-2">
                         <label className="text-sm font-semibold text-gray-700">Next Visit Date</label>
                         <div className="relative">
-                            <Input placeholder="dd-mm-yyyy" type="date" className="w-full" />
+                            <Input
+                                placeholder="dd-mm-yyyy"
+                                type="date"
+                                className="w-full"
+                                value={visitFormData.nextVisit}
+                                onChange={(e) => setVisitFormData({ ...visitFormData, nextVisit: e.target.value })}
+                            />
                         </div>
                     </div>
 
@@ -453,10 +472,13 @@ export default function DoctorDashboard() {
                         </div>
                     </div>
 
-                    <button className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive text-primary-foreground h-9 px-4 py-2 has-[>svg]:px-3 w-full bg-teal-600 hover:bg-teal-700">
+                    <Button
+                        onClick={handleSaveVisit}
+                        className="w-full bg-teal-600 hover:bg-teal-700"
+                    >
                         <Plus className="w-4 h-4 mr-2" />
                         Save Visit (Append-Only)
-                    </button>
+                    </Button>
                 </div>
             </Modal>
         </div>
