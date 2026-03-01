@@ -10,16 +10,21 @@ import {
     Activity,
     CheckSquare,
     Search,
-    X
+    X,
+    Plus,
+    Syringe
 } from 'lucide-react';
 import { Modal } from '../../components/ui/Modal';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
 import { staffService, patientService } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 
 export default function StaffDashboard() {
     const navigate = useNavigate();
+    const { profile, signOut } = useAuth();
+
     const [isRegisterOpen, setIsRegisterOpen] = useState(false);
     const [isEditOpen, setIsEditOpen] = useState(false);
     const [successState, setSuccessState] = useState({ isOpen: false, type: '', data: null });
@@ -29,88 +34,186 @@ export default function StaffDashboard() {
     // Form States
     const [registerFormData, setRegisterFormData] = useState({
         firstName: '', lastName: '', age: '', gender: '', bloodGroup: '',
-        contact: '', email: '', address: '', emergencyContact: ''
+        contact: '', email: '', address: '', emergencyContact: '',
+        allergies: '', chronicConditions: ''
     });
+    const [registerVaccinations, setRegisterVaccinations] = useState([]);
     const [editFormData, setEditFormData] = useState(null);
+    const [editVaccinations, setEditVaccinations] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [submitting, setSubmitting] = useState(false);
     const [recentRegistrations, setRecentRegistrations] = useState([]);
-    const [stats, setStats] = useState({
-        today: 0,
-        week: 0,
-        month: 0,
-        total: 0
-    });
+    const [stats, setStats] = useState({ today: 0, week: 0, month: 0, total: 0 });
+    const [error, setError] = useState(null);
+    const [registrationError, setRegistrationError] = useState(null);
 
     useEffect(() => {
-        fetchDashboardData();
-    }, []);
+        if (profile?.id) fetchDashboardData();
+    }, [profile]);
 
     const fetchDashboardData = async () => {
+        if (!profile?.id) return;
         try {
             setLoading(true);
+            setError(null);
+            const hospitalId = profile.hospital_id;
             const [registrationsData, statsData] = await Promise.all([
-                staffService.getRecentRegistrations(),
-                staffService.getStats()
+                staffService.getRecentRegistrations(profile.id, hospitalId),
+                staffService.getStats(profile.id, hospitalId),
             ]);
             setRecentRegistrations(registrationsData);
             setStats(statsData);
-        } catch (error) {
-            console.error("Failed to fetch dashboard data", error);
+        } catch (err) {
+            console.error('Failed to fetch dashboard data', err);
+            setError(err.message);
         } finally {
             setLoading(false);
         }
     };
 
-    const handleLogout = () => {
+    const handleLogout = async () => {
+        await signOut();
         navigate('/login');
     };
 
     const handleRegister = async (e) => {
         e.preventDefault();
+        setSubmitting(true);
+        setRegistrationError(null);
         try {
-            const response = await patientService.registerPatient(registerFormData);
-            setIsRegisterOpen(false);
-            setSuccessState({ isOpen: true, type: 'register', data: { id: response.id || 'NEW_ID' } }); // Adjust based on actual API response
+            if (!profile?.id) throw new Error("Staff session expired. Please refresh.");
 
-            // Reset form
+            // Convert comma-separated strings to arrays for storage
+            const formWithArrays = {
+                ...registerFormData,
+                allergies: registerFormData.allergies
+                    ? registerFormData.allergies.split(',').map(s => s.trim()).filter(Boolean)
+                    : [],
+                chronicConditions: registerFormData.chronicConditions
+                    ? registerFormData.chronicConditions.split(',').map(s => s.trim()).filter(Boolean)
+                    : [],
+            };
+            const response = await patientService.registerPatient(formWithArrays, profile);
+
+            // Save vaccinations if any were entered
+            if (registerVaccinations.length > 0 && response.user_id) {
+                await patientService.updateVaccinations(response.user_id, registerVaccinations);
+            }
+
+            setIsRegisterOpen(false);
+            setSuccessState({
+                isOpen: true,
+                type: 'register',
+                data: {
+                    id: response.health_id ?? '—',
+                    tempPassword: response.temp_password ?? null,
+                },
+            });
             setRegisterFormData({
                 firstName: '', lastName: '', age: '', gender: '', bloodGroup: '',
-                contact: '', email: '', address: '', emergencyContact: ''
+                contact: '', email: '', address: '', emergencyContact: '',
+                allergies: '', chronicConditions: ''
             });
-            fetchDashboardData(); // Refresh list
-        } catch (error) {
-            console.error("Registration failed", error);
-            alert("Failed to register patient");
+            setRegisterVaccinations([]);
+            fetchDashboardData();
+        } catch (err) {
+            console.error('Registration failed', err);
+            const msg = err.message || '';
+            if (msg.toLowerCase().includes('already registered') || msg.toLowerCase().includes('already exists')) {
+                setRegistrationError('This email is already registered with another account.');
+            } else {
+                setRegistrationError('Failed to register patient: ' + msg);
+            }
+        } finally {
+            setSubmitting(false);
         }
     };
 
     const handleEditSubmit = async (e) => {
         e.preventDefault();
         try {
-            await patientService.updatePatient(selectedPatient.id, editFormData);
+            const dataToSend = {
+                ...editFormData,
+                allergies: editFormData.allergies
+                    ? (typeof editFormData.allergies === 'string'
+                        ? editFormData.allergies.split(',').map(s => s.trim()).filter(Boolean)
+                        : editFormData.allergies)
+                    : [],
+                chronicConditions: editFormData.chronicConditions
+                    ? (typeof editFormData.chronicConditions === 'string'
+                        ? editFormData.chronicConditions.split(',').map(s => s.trim()).filter(Boolean)
+                        : editFormData.chronicConditions)
+                    : [],
+            };
+            await patientService.updatePatient(selectedPatient.uuid, dataToSend);
+            // Save vaccinations (replaces any existing ones)
+            await patientService.updateVaccinations(selectedPatient.uuid, editVaccinations);
             setIsEditOpen(false);
             setSuccessState({ isOpen: true, type: 'edit', data: { name: editFormData.name } });
             setSelectedPatient(null);
             setEditFormData(null);
-            fetchDashboardData(); // Refresh list
-        } catch (error) {
-            console.error("Update failed", error);
-            alert("Failed to update patient");
+            setEditVaccinations([]);
+            fetchDashboardData();
+        } catch (err) {
+            console.error('Update failed', err);
+            // More descriptive error for the user
+            const msg = err.message || 'Unknown error';
+            alert('Failed to update patient: ' + msg);
         }
     };
 
-    const initiateEdit = (patient) => {
+    const initiateEdit = async (patient) => {
         setSelectedPatient(patient);
         setEditFormData({
             ...patient,
-            firstName: patient.name.split(' ')[0],
-            lastName: patient.name.split(' ').slice(1).join(' '),
+            name: patient.name,
             bloodGroup: patient.bloodGroup || '',
             email: patient.email || '',
             address: patient.address || '',
-            emergencyContact: patient.emergencyContact || ''
+            emergencyContact: patient.emergencyContact || '',
+            allergies: Array.isArray(patient.allergies) ? patient.allergies.join(', ') : (patient.allergies || ''),
+            chronicConditions: Array.isArray(patient.chronicConditions) ? patient.chronicConditions.join(', ') : (patient.chronicConditions || ''),
         });
+
+        // Fetch complete details to get vaccinations and email/address specifically
+        try {
+            const details = await patientService.getPatientDetails(patient.id);
+            if (details) {
+                // Merge full details from server into form fields
+                setEditFormData(prev => ({
+                    ...prev,
+                    email: details.email || prev.email || '',
+                    address: details.address || prev.address || '',
+                    bloodGroup: details.bloodGroup || prev.bloodGroup || '',
+                    emergencyContact: details.emergencyContact || prev.emergencyContact || '',
+                    allergies: Array.isArray(details.allergies) ? details.allergies.join(', ') : (details.allergies || prev.allergies || ''),
+                    chronicConditions: Array.isArray(details.chronicConditions) ? details.chronicConditions.join(', ') : (details.chronicConditions || prev.chronicConditions || ''),
+                }));
+
+                if (Array.isArray(details.vaccinations)) {
+                    setEditVaccinations(details.vaccinations.map(v => ({
+                        name: v.name || '',
+                        date: v.date || '',
+                        nextDue: v.nextDue || ''
+                    })));
+                }
+            }
+        } catch (err) {
+            console.error('Failed to fetch full details for edit', err);
+            // No need to alert, we have partial data from the list
+        }
     };
+
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                <div className="text-center">
+                    <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                    <p className="text-gray-500 text-sm">Loading dashboard…</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-gray-50 flex">
@@ -123,7 +226,7 @@ export default function StaffDashboard() {
                         </div>
                         <div>
                             <h1 className="font-bold text-gray-900 leading-tight text-lg">Staff Dashboard</h1>
-                            <p className="text-xs text-gray-500">Patient Registration</p>
+                            <p className="text-xs text-gray-500">{profile?.full_name ?? 'Staff Member'}</p>
                         </div>
                     </div>
                 </div>
@@ -191,6 +294,12 @@ export default function StaffDashboard() {
 
             {/* Main Content */}
             <main className="flex-1 ml-80 p-8">
+
+                {error && (
+                    <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6 text-red-700 text-sm">
+                        <strong>Error:</strong> {error}
+                    </div>
+                )}
 
                 {/* Stats Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
@@ -279,7 +388,7 @@ export default function StaffDashboard() {
                     <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white">
                         <div>
                             <h3 className="font-bold text-gray-900 text-lg">Recent Registrations</h3>
-                            <p className="text-sm text-gray-500">Recently registered patients (contact information only)</p>
+                            <p className="text-sm text-gray-500">Patients you have registered (contact info only)</p>
                         </div>
                         <div className="flex items-center gap-2">
                             <span className="inline-flex items-center justify-center rounded-md border text-xs font-medium w-fit whitespace-nowrap shrink-0 gap-1 bg-teal-50 text-teal-700 border-teal-200 px-3 py-1">
@@ -292,132 +401,255 @@ export default function StaffDashboard() {
                         </div>
                     </div>
                     <div className="max-h-[400px] overflow-y-auto">
-                        <table className="w-full relative">
-                            <thead className="bg-gray-50 text-left sticky top-0 z-10">
-                                <tr>
-                                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Health ID</th>
-                                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Patient Name</th>
-                                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Age</th>
-                                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Gender</th>
-                                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Contact</th>
-                                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Registration Date</th>
-                                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Registered By</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                                {recentRegistrations.map((patient) => (
-                                    <tr key={patient.id} className="hover:bg-gray-50/50">
-                                        <td className="px-6 py-4 text-sm font-medium text-blue-600">{patient.id}</td>
-                                        <td className="px-6 py-4 text-sm text-gray-900 font-medium">{patient.name}</td>
-                                        <td className="px-6 py-4 text-sm text-gray-600">{patient.age}</td>
-                                        <td className="px-6 py-4 text-sm text-gray-600">{patient.gender}</td>
-                                        <td className="px-6 py-4 text-sm text-gray-600">{patient.contact}</td>
-                                        <td className="px-6 py-4 text-sm text-gray-500">{patient.date}</td>
-                                        <td className="px-6 py-4">
-                                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${patient.by === 'Staff (You)' ? 'bg-green-50 text-green-700' : 'bg-gray-50 text-gray-600'
-                                                }`}>
-                                                {patient.by}
-                                            </span>
-                                        </td>
+                        {recentRegistrations.length === 0 ? (
+                            <div className="p-12 text-center text-gray-400">
+                                <UserPlus className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                                <p className="font-medium">No registrations yet</p>
+                                <p className="text-sm mt-1">Register your first patient using the button on the left</p>
+                            </div>
+                        ) : (
+                            <table className="w-full relative">
+                                <thead className="bg-gray-50 text-left sticky top-0 z-10">
+                                    <tr>
+                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Health ID</th>
+                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Patient Name</th>
+                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Age</th>
+                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Gender</th>
+                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Contact</th>
+                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Registration Date</th>
+                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Registered By</th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {recentRegistrations.map((patient) => (
+                                        <tr key={patient.uuid} className="hover:bg-gray-50/50">
+                                            <td className="px-6 py-4 text-sm font-medium text-blue-600">{patient.id}</td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex flex-col">
+                                                    <span className="text-sm text-gray-900 font-medium">{patient.name}</span>
+                                                    <div className="flex flex-wrap gap-1 mt-1">
+                                                        {patient.allergies?.slice(0, 2).map((a, i) => (
+                                                            <span key={i} className="px-1.5 py-0.5 rounded-full bg-red-50 text-red-600 text-[10px] font-bold border border-red-100">
+                                                                {a}
+                                                            </span>
+                                                        ))}
+                                                        {patient.chronicConditions?.slice(0, 2).map((c, i) => (
+                                                            <span key={i} className="px-1.5 py-0.5 rounded-full bg-orange-50 text-orange-600 text-[10px] font-bold border border-orange-100">
+                                                                {c}
+                                                            </span>
+                                                        ))}
+                                                        {(patient.allergies?.length > 2 || patient.chronicConditions?.length > 2) && (
+                                                            <span className="text-[10px] text-gray-400 font-medium">+more</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 text-sm text-gray-600">{patient.age ?? '—'}</td>
+                                            <td className="px-6 py-4 text-sm text-gray-600">{patient.gender}</td>
+                                            <td className="px-6 py-4 text-sm text-gray-600">{patient.contact}</td>
+                                            <td className="px-6 py-4 text-sm text-gray-500">{patient.date}</td>
+                                            <td className="px-6 py-4">
+                                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700">
+                                                    {patient.by}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )}
                     </div>
                 </div>
             </main>
 
-            {/* Modal: Register New Patient */}
             <Modal
                 isOpen={isRegisterOpen}
-                onClose={() => setIsRegisterOpen(false)}
+                onClose={() => { setIsRegisterOpen(false); setRegisterVaccinations([]); setRegistrationError(null); }}
                 title="Register New Patient"
             >
                 <form className="space-y-4" onSubmit={handleRegister}>
-                    <div className="bg-green-50 border border-green-100 rounded-lg p-3 flex items-center gap-2 text-sm text-green-800 mb-4">
-                        <CheckCircle className="w-4 h-4 text-green-600" />
-                        Fill patient details to generate Health ID and login credentials
-                    </div>
+                    <div className="overflow-y-auto max-h-[70vh] pr-1 space-y-4">
+                        {registrationError && (
+                            <div className="bg-red-50 border border-red-100 p-3 rounded-lg flex items-center gap-2 text-sm text-red-700">
+                                <AlertTriangle className="w-4 h-4" />
+                                {registrationError}
+                            </div>
+                        )}
+                        <div className="bg-green-50 border border-green-100 rounded-lg p-3 flex items-center gap-2 text-sm text-green-800">
+                            <CheckCircle className="w-4 h-4 text-green-600" />
+                            Fill patient details to generate Health ID and login credentials
+                        </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                        <Input
-                            label="First Name *"
-                            placeholder="John"
-                            required
-                            value={registerFormData.firstName}
-                            onChange={(e) => setRegisterFormData({ ...registerFormData, firstName: e.target.value })}
-                        />
-                        <Input
-                            label="Last Name *"
-                            placeholder="Doe"
-                            required
-                            value={registerFormData.lastName}
-                            onChange={(e) => setRegisterFormData({ ...registerFormData, lastName: e.target.value })}
-                        />
-                    </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <Input
+                                label="First Name *"
+                                placeholder="John"
+                                required
+                                value={registerFormData.firstName}
+                                onChange={(e) => setRegisterFormData({ ...registerFormData, firstName: e.target.value })}
+                            />
+                            <Input
+                                label="Last Name *"
+                                placeholder="Doe"
+                                required
+                                value={registerFormData.lastName}
+                                onChange={(e) => setRegisterFormData({ ...registerFormData, lastName: e.target.value })}
+                            />
+                        </div>
 
-                    <div className="grid grid-cols-3 gap-4">
-                        <Input
-                            label="Age *"
-                            placeholder="25"
-                            type="number"
-                            min="0"
-                            max="120"
-                            steps="1"
-                            required
-                            value={registerFormData.age}
-                            onChange={(e) => setRegisterFormData({ ...registerFormData, age: e.target.value })}
-                            className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        />
-                        <Select
-                            label="Gender *"
-                            placeholder="Select"
-                            options={[{ value: 'Male', label: 'Male' }, { value: 'Female', label: 'Female' }, { value: 'Other', label: 'Other' }]}
-                            value={registerFormData.gender}
-                            onChange={(val) => setRegisterFormData({ ...registerFormData, gender: val })}
-                        />
-                        <Select
-                            label="Blood Group"
-                            placeholder="Select"
-                            options={[
-                                { value: 'A+', label: 'A+' }, { value: 'A-', label: 'A-' },
-                                { value: 'B+', label: 'B+' }, { value: 'B-', label: 'B-' },
-                                { value: 'O+', label: 'O+' }, { value: 'O-', label: 'O-' },
-                                { value: 'AB+', label: 'AB+' }, { value: 'AB-', label: 'AB-' }
-                            ]}
-                            value={registerFormData.bloodGroup}
-                            onChange={(val) => setRegisterFormData({ ...registerFormData, bloodGroup: val })}
-                        />
-                    </div>
+                        <div className="grid grid-cols-3 gap-4">
+                            <Input
+                                label="Age *"
+                                placeholder="25"
+                                type="number"
+                                min="0"
+                                max="120"
+                                required
+                                value={registerFormData.age}
+                                onChange={(e) => setRegisterFormData({ ...registerFormData, age: e.target.value })}
+                                className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            />
+                            <Select
+                                label="Gender *"
+                                placeholder="Select"
+                                options={[{ value: 'Male', label: 'Male' }, { value: 'Female', label: 'Female' }, { value: 'Other', label: 'Other' }]}
+                                value={registerFormData.gender}
+                                onChange={(val) => setRegisterFormData({ ...registerFormData, gender: val })}
+                            />
+                            <Select
+                                label="Blood Group"
+                                placeholder="Select"
+                                options={[
+                                    { value: 'A+', label: 'A+' }, { value: 'A-', label: 'A-' },
+                                    { value: 'B+', label: 'B+' }, { value: 'B-', label: 'B-' },
+                                    { value: 'O+', label: 'O+' }, { value: 'O-', label: 'O-' },
+                                    { value: 'AB+', label: 'AB+' }, { value: 'AB-', label: 'AB-' }
+                                ]}
+                                value={registerFormData.bloodGroup}
+                                onChange={(val) => setRegisterFormData({ ...registerFormData, bloodGroup: val })}
+                            />
+                        </div>
 
-                    <Input
-                        label="Contact Number *"
-                        placeholder="+1 555-0100"
-                        required
-                        value={registerFormData.contact}
-                        onChange={(e) => setRegisterFormData({ ...registerFormData, contact: e.target.value })}
-                    />
-                    <Input
-                        label="Email Address"
-                        placeholder="patient@email.com"
-                        type="email"
-                        value={registerFormData.email}
-                        onChange={(e) => setRegisterFormData({ ...registerFormData, email: e.target.value })}
-                    />
-                    <Input
-                        label="Address *"
-                        placeholder="Full residential address"
-                        required
-                        value={registerFormData.address}
-                        onChange={(e) => setRegisterFormData({ ...registerFormData, address: e.target.value })}
-                    />
-                    <Input
-                        label="Emergency Contact *"
-                        placeholder="Name and contact number"
-                        required
-                        value={registerFormData.emergencyContact}
-                        onChange={(e) => setRegisterFormData({ ...registerFormData, emergencyContact: e.target.value })}
-                    />
+                        <Input
+                            label="Contact Number *"
+                            placeholder="+91 9876543210"
+                            required
+                            value={registerFormData.contact}
+                            onChange={(e) => setRegisterFormData({ ...registerFormData, contact: e.target.value })}
+                        />
+                        <Input
+                            label="Email Address"
+                            placeholder="patient@email.com"
+                            type="email"
+                            value={registerFormData.email}
+                            onChange={(e) => setRegisterFormData({ ...registerFormData, email: e.target.value })}
+                        />
+                        <Input
+                            label="Address *"
+                            placeholder="Full residential address"
+                            required
+                            value={registerFormData.address}
+                            onChange={(e) => setRegisterFormData({ ...registerFormData, address: e.target.value })}
+                        />
+                        <Input
+                            label="Emergency Contact *"
+                            placeholder="Name and contact number"
+                            required
+                            value={registerFormData.emergencyContact}
+                            onChange={(e) => setRegisterFormData({ ...registerFormData, emergencyContact: e.target.value })}
+                        />
+
+                        {/* Optional Medical Info */}
+                        <div className="border-t border-gray-100 pt-3">
+                            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Optional Medical Info</p>
+                            <div className="space-y-3">
+                                <div className="space-y-1.5">
+                                    <label className="text-sm font-semibold text-gray-700">Known Allergies <span className="text-gray-400 font-normal">(comma-separated)</span></label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. Penicillin, Peanuts"
+                                        value={registerFormData.allergies}
+                                        onChange={(e) => setRegisterFormData({ ...registerFormData, allergies: e.target.value })}
+                                        className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-100 focus:border-green-500"
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-sm font-semibold text-gray-700">Chronic Conditions <span className="text-gray-400 font-normal">(comma-separated)</span></label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. Diabetes, Hypertension"
+                                        value={registerFormData.chronicConditions}
+                                        onChange={(e) => setRegisterFormData({ ...registerFormData, chronicConditions: e.target.value })}
+                                        className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-100 focus:border-green-500"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Vaccinations */}
+                        <div className="border-t border-gray-100 pt-3">
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                    <Syringe className="w-4 h-4 text-green-600" />
+                                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Vaccination History</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setRegisterVaccinations([...registerVaccinations, { name: '', date: '', nextDue: '' }])}
+                                    className="flex items-center gap-1 text-xs font-semibold text-green-700 hover:text-green-800 bg-green-50 hover:bg-green-100 px-2.5 py-1.5 rounded-lg border border-green-200 transition-colors"
+                                >
+                                    <Plus className="w-3.5 h-3.5" /> Add Vaccination
+                                </button>
+                            </div>
+                            {registerVaccinations.length === 0 ? (
+                                <p className="text-xs text-gray-400 text-center py-3">No vaccinations added yet</p>
+                            ) : (
+                                <div className="space-y-3">
+                                    {registerVaccinations.map((vac, i) => (
+                                        <div key={i} className="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-xs font-semibold text-gray-500">Vaccination {i + 1}</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setRegisterVaccinations(registerVaccinations.filter((_, idx) => idx !== i))}
+                                                    className="text-red-400 hover:text-red-600 p-0.5"
+                                                >
+                                                    <X className="w-3.5 h-3.5" />
+                                                </button>
+                                            </div>
+                                            <input
+                                                type="text"
+                                                placeholder="Vaccine name *"
+                                                value={vac.name}
+                                                onChange={(e) => setRegisterVaccinations(registerVaccinations.map((v, idx) => idx === i ? { ...v, name: e.target.value } : v))}
+                                                className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-100 focus:border-green-500"
+                                            />
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <div>
+                                                    <label className="text-xs text-gray-500 mb-0.5 block">Date Administered</label>
+                                                    <input
+                                                        type="date"
+                                                        value={vac.date}
+                                                        onChange={(e) => setRegisterVaccinations(registerVaccinations.map((v, idx) => idx === i ? { ...v, date: e.target.value } : v))}
+                                                        className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-100 focus:border-green-500"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-xs text-gray-500 mb-0.5 block">Next Due Date</label>
+                                                    <input
+                                                        type="date"
+                                                        value={vac.nextDue}
+                                                        onChange={(e) => setRegisterVaccinations(registerVaccinations.map((v, idx) => idx === i ? { ...v, nextDue: e.target.value } : v))}
+                                                        className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-100 focus:border-green-500"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
 
                     <Button type="submit" className="w-full bg-green-600 hover:bg-green-700 mt-4 h-12 text-base">
                         <div className="flex items-center justify-center gap-2">
@@ -457,28 +689,23 @@ export default function StaffDashboard() {
                                 recentRegistrations
                                     .filter(p =>
                                         p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                                        p.id.toLowerCase().includes(searchQuery.toLowerCase())
+                                        (p.id ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                        (p.contact ?? '').includes(searchQuery)
                                     )
                                     .map(patient => (
                                         <button
-                                            key={patient.id}
+                                            key={patient.uuid}
                                             onClick={() => initiateEdit(patient)}
-                                            disabled={patient.by !== 'Staff (You)'}
-                                            className={`w-full text-left p-4 rounded-xl border transition-all ${patient.by === 'Staff (You)'
-                                                ? 'bg-white border-gray-100 hover:border-green-200 hover:shadow-sm group'
-                                                : 'bg-gray-50 border-gray-100 opacity-60 cursor-not-allowed'
-                                                }`}
+                                            className="w-full text-left p-4 rounded-xl border bg-white border-gray-100 hover:border-green-200 hover:shadow-sm group transition-all"
                                         >
                                             <div className="flex justify-between items-start">
                                                 <div>
                                                     <h4 className="font-bold text-gray-900">{patient.name}</h4>
                                                     <p className="text-xs text-gray-500">{patient.id} • {patient.contact}</p>
                                                 </div>
-                                                {patient.by === 'Staff (You)' && (
-                                                    <span className="text-xs font-medium bg-green-50 text-green-700 px-2 py-1 rounded">
-                                                        Your Registration
-                                                    </span>
-                                                )}
+                                                <span className="text-xs font-medium bg-green-50 text-green-700 px-2 py-1 rounded">
+                                                    Your Registration
+                                                </span>
                                             </div>
                                         </button>
                                     ))
@@ -495,91 +722,184 @@ export default function StaffDashboard() {
                     </div>
                 ) : (
                     <form className="space-y-4" onSubmit={handleEditSubmit}>
-                        <div className="bg-green-50 border border-green-100 rounded-xl p-4 flex items-center justify-between mb-2">
-                            <div>
-                                <p className="text-xs text-green-600 font-medium">Editing: <span className="font-bold text-green-800">{selectedPatient.name}</span></p>
-                                <p className="text-[10px] text-green-600">{selectedPatient.id}</p>
+                        <div className="overflow-y-auto max-h-[60vh] pr-1 space-y-4">
+                            <div className="bg-green-50 border border-green-100 rounded-xl p-4 flex items-center justify-between">
+                                <div>
+                                    <p className="text-xs text-green-600 font-medium">Editing: <span className="font-bold text-green-800">{selectedPatient.name}</span></p>
+                                    <p className="text-[10px] text-green-600">{selectedPatient.id}</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => { setSelectedPatient(null); setEditFormData(null); setEditVaccinations([]); }}
+                                    className="text-xs font-bold text-green-700 hover:text-green-800 underline"
+                                >
+                                    Change Patient
+                                </button>
                             </div>
-                            <button
-                                type="button"
-                                onClick={() => { setSelectedPatient(null); setEditFormData(null); }}
-                                className="text-xs font-bold text-green-700 hover:text-green-800 underline"
-                            >
-                                Change Patient
-                            </button>
-                        </div>
 
-                        <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <Input
+                                    label="Full Name *"
+                                    value={editFormData?.name || ''}
+                                    onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                                    required
+                                />
+                                <Input
+                                    label="Age *"
+                                    value={editFormData?.age || ''}
+                                    type="number"
+                                    onChange={(e) => setEditFormData({ ...editFormData, age: e.target.value })}
+                                    className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                    required
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <Select
+                                    label="Gender *"
+                                    value={editFormData?.gender || ''}
+                                    options={[{ value: 'Male', label: 'Male' }, { value: 'Female', label: 'Female' }, { value: 'Other', label: 'Other' }]}
+                                    onChange={(val) => setEditFormData({ ...editFormData, gender: val })}
+                                />
+                                <Select
+                                    label="Blood Group"
+                                    placeholder="Select"
+                                    value={editFormData?.bloodGroup || ''}
+                                    options={[
+                                        { value: 'A+', label: 'A+' }, { value: 'A-', label: 'A-' },
+                                        { value: 'B+', label: 'B+' }, { value: 'B-', label: 'B-' },
+                                        { value: 'O+', label: 'O+' }, { value: 'O-', label: 'O-' },
+                                        { value: 'AB+', label: 'AB+' }, { value: 'AB-', label: 'AB-' }
+                                    ]}
+                                    onChange={(val) => setEditFormData({ ...editFormData, bloodGroup: val })}
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <Input
+                                    label="Contact Number *"
+                                    value={editFormData?.contact || ''}
+                                    onChange={(e) => setEditFormData({ ...editFormData, contact: e.target.value })}
+                                    required
+                                />
+                                <Input
+                                    label="Email Address"
+                                    value={editFormData?.email || ''}
+                                    onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
+                                    type="email"
+                                />
+                            </div>
+
                             <Input
-                                label="Full Name *"
-                                value={editFormData?.name || ''}
-                                onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                                label="Address *"
+                                value={editFormData?.address || ''}
+                                onChange={(e) => setEditFormData({ ...editFormData, address: e.target.value })}
                                 required
                             />
                             <Input
-                                label="Age *"
-                                value={editFormData?.age || ''}
-                                type="number"
-                                onChange={(e) => setEditFormData({ ...editFormData, age: e.target.value })}
-                                className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                label="Emergency Contact *"
+                                value={editFormData?.emergencyContact || ''}
+                                onChange={(e) => setEditFormData({ ...editFormData, emergencyContact: e.target.value })}
                                 required
                             />
+
+                            {/* Optional Medical Info */}
+                            <div className="border-t border-gray-100 pt-3">
+                                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Optional Medical Info</p>
+                                <div className="space-y-3">
+                                    <div className="space-y-1.5">
+                                        <label className="text-sm font-semibold text-gray-700">Known Allergies <span className="text-gray-400 font-normal">(comma-separated)</span></label>
+                                        <input
+                                            type="text"
+                                            placeholder="e.g. Penicillin, Peanuts"
+                                            value={editFormData?.allergies || ''}
+                                            onChange={(e) => setEditFormData({ ...editFormData, allergies: e.target.value })}
+                                            className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-100 focus:border-green-500"
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-sm font-semibold text-gray-700">Chronic Conditions <span className="text-gray-400 font-normal">(comma-separated)</span></label>
+                                        <input
+                                            type="text"
+                                            placeholder="e.g. Diabetes, Hypertension"
+                                            value={editFormData?.chronicConditions || ''}
+                                            onChange={(e) => setEditFormData({ ...editFormData, chronicConditions: e.target.value })}
+                                            className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-100 focus:border-green-500"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Vaccination History */}
+                            <div className="border-t border-gray-100 pt-3">
+                                <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center gap-2">
+                                        <Syringe className="w-4 h-4 text-green-600" />
+                                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Vaccination History</p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setEditVaccinations([...editVaccinations, { name: '', date: '', nextDue: '' }])}
+                                        className="flex items-center gap-1 text-xs font-semibold text-green-700 hover:text-green-800 bg-green-50 hover:bg-green-100 px-2.5 py-1.5 rounded-lg border border-green-200 transition-colors"
+                                    >
+                                        <Plus className="w-3.5 h-3.5" /> Add Vaccination
+                                    </button>
+                                </div>
+                                {editVaccinations.length === 0 ? (
+                                    <p className="text-xs text-gray-400 text-center py-3">No vaccinations recorded</p>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {editVaccinations.map((vac, i) => (
+                                            <div key={i} className="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-xs font-semibold text-gray-500">Vaccination {i + 1}</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setEditVaccinations(editVaccinations.filter((_, idx) => idx !== i))}
+                                                        className="text-red-400 hover:text-red-600 p-0.5"
+                                                    >
+                                                        <X className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
+                                                <input
+                                                    type="text"
+                                                    placeholder="Vaccine name *"
+                                                    value={vac.name}
+                                                    onChange={(e) => setEditVaccinations(editVaccinations.map((v, idx) => idx === i ? { ...v, name: e.target.value } : v))}
+                                                    className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-100 focus:border-green-500"
+                                                />
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <div>
+                                                        <label className="text-xs text-gray-500 mb-0.5 block">Date Administered</label>
+                                                        <input
+                                                            type="date"
+                                                            value={vac.date}
+                                                            onChange={(e) => setEditVaccinations(editVaccinations.map((v, idx) => idx === i ? { ...v, date: e.target.value } : v))}
+                                                            className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-100 focus:border-green-500"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-xs text-gray-500 mb-0.5 block">Next Due Date</label>
+                                                        <input
+                                                            type="date"
+                                                            value={vac.nextDue}
+                                                            onChange={(e) => setEditVaccinations(editVaccinations.map((v, idx) => idx === i ? { ...v, nextDue: e.target.value } : v))}
+                                                            className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-100 focus:border-green-500"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="bg-blue-50 text-blue-700 text-sm p-3 rounded-lg border border-blue-100">
+                                Patient details will be updated in the system.
+                            </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4">
-                            <Select
-                                label="Gender *"
-                                value={editFormData?.gender || ''}
-                                options={[{ value: 'Male', label: 'Male' }, { value: 'Female', label: 'Female' }, { value: 'Other', label: 'Other' }]}
-                                onChange={(val) => setEditFormData({ ...editFormData, gender: val })}
-                            />
-                            <Select
-                                label="Blood Group"
-                                placeholder="Select"
-                                value={editFormData?.bloodGroup || ''}
-                                options={[
-                                    { value: 'A+', label: 'A+' }, { value: 'A-', label: 'A-' },
-                                    { value: 'B+', label: 'B+' }, { value: 'B-', label: 'B-' },
-                                    { value: 'O+', label: 'O+' }, { value: 'O-', label: 'O-' },
-                                    { value: 'AB+', label: 'AB+' }, { value: 'AB-', label: 'AB-' }
-                                ]}
-                                onChange={(val) => setEditFormData({ ...editFormData, bloodGroup: val })}
-                            />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <Input
-                                label="Contact Number *"
-                                value={editFormData?.contact || ''}
-                                onChange={(e) => setEditFormData({ ...editFormData, contact: e.target.value })}
-                                required
-                            />
-                            <Input
-                                label="Email Address"
-                                value={editFormData?.email || ''}
-                                onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
-                                type="email"
-                            />
-                        </div>
-
-                        <Input
-                            label="Address *"
-                            value={editFormData?.address || ''}
-                            onChange={(e) => setEditFormData({ ...editFormData, address: e.target.value })}
-                            required
-                        />
-                        <Input
-                            label="Emergency Contact *"
-                            value={editFormData?.emergencyContact || ''}
-                            onChange={(e) => setEditFormData({ ...editFormData, emergencyContact: e.target.value })}
-                            required
-                        />
-
-                        <div className="bg-blue-50 text-blue-700 text-sm p-3 rounded-lg border border-blue-100">
-                            Patient details will be updated in the system.
-                        </div>
-
-                        <Button type="submit" className="w-full bg-green-600 hover:bg-green-700 h-11">
+                        <Button type="submit" className="w-full bg-green-600 hover:bg-green-700 h-11 mt-4">
                             <div className="flex items-center justify-center gap-2">
                                 <CheckCircle className="w-4 h-4" />
                                 Update Patient Details
@@ -614,19 +934,23 @@ export default function StaffDashboard() {
 
                         {successState.type === 'register' && (
                             <>
-                                <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-6">
+                                <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-3">
                                     <p className="text-sm text-blue-600 font-medium mb-1">Generated Health ID:</p>
                                     <p className="text-2xl font-bold text-blue-800">{successState.data?.id}</p>
                                 </div>
-                                <p className="text-sm text-gray-500 mb-6">
-                                    Login credentials have been auto-generated and sent to the patient's email/phone.
-                                </p>
+                                {successState.data?.tempPassword && (
+                                    <div className="bg-yellow-50 border border-yellow-100 rounded-xl p-4 mb-3">
+                                        <p className="text-sm text-yellow-700 font-medium mb-1">Temporary Password:</p>
+                                        <p className="text-lg font-mono font-bold text-yellow-900">{successState.data.tempPassword}</p>
+                                        <p className="text-xs text-yellow-600 mt-1">Share this with the patient — they can reset it on first login.</p>
+                                    </div>
+                                )}
                             </>
                         )}
 
                         {successState.type === 'edit' && (
                             <p className="text-sm text-gray-500 mb-6">
-                                The details for <span className="font-semibold text-gray-900">{successState.data?.name}</span> have been successfully updated in the system.
+                                The details for <span className="font-semibold text-gray-900">{successState.data?.name}</span> have been successfully updated.
                             </p>
                         )}
 
