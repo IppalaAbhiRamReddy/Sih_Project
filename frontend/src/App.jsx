@@ -14,10 +14,12 @@ import HospitalDashboard from './pages/hospital/HospitalDashboard';
 import StaffDashboard from './pages/staff/StaffDashboard';
 import DoctorDashboard from './pages/doctor/DoctorDashboard';
 import PatientDashboard from './pages/patient/PatientDashboard';
+import { Toaster } from 'react-hot-toast';
 
 function App() {
   return (
     <AuthProvider>
+      <Toaster position="top-right" reverseOrder={false} />
       <Router>
         <Routes>
           {/* Public Routes */}

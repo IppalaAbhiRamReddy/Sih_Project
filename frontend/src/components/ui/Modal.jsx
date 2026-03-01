@@ -12,7 +12,7 @@ export function Modal({ isOpen, onClose, title, children }) {
                     <h3 className="text-lg font-bold text-gray-900">{title}</h3>
                     <button
                         onClick={onClose}
-                        className="p-1 hover:bg-gray-100 rounded-full transition-colors"
+                        className="p-1 hover:bg-gray-100 rounded-full transition-colors cursor-pointer"
                     >
                         <X className="w-5 h-5 text-gray-400" />
                     </button>

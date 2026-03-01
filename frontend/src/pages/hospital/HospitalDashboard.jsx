@@ -1,30 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-    Building2,
-    Shield,
-    UserPlus,
-    Users,
-    AlertTriangle,
-    LogOut,
-    Stethoscope,
-    Activity,
-    CheckCircle,
-    Plus,
-    Search,
-    Filter,
-    Brain,
-    Key,
-    Copy,
-    Edit,
-    XCircle,
-    UserCog,
-    Trash2,
-    UserCheck,
-    UserX,
-    ChevronDown,
-    ChevronRight
+    Building2, Shield, UserPlus, Users, AlertTriangle, LogOut, Stethoscope, Activity, CheckCircle, Plus, Search, Filter, Brain, Key, Copy, Edit, XCircle, UserCog, Trash2, UserCheck, UserX, ChevronDown, ChevronRight, Layout, FileText, Loader2 as Loader, Lock
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import toast from 'react-hot-toast';
 
 import { Modal } from '../../components/ui/Modal';
 import { Input } from '../../components/ui/Input';
@@ -79,6 +59,7 @@ export default function HospitalDashboard() {
     const [doctorDeptFilter, setDoctorDeptFilter] = useState('All');
     const [staffSearch, setStaffSearch] = useState('');
     const [staffDeptFilter, setStaffDeptFilter] = useState('All');
+    const [accountStatusFilter, setAccountStatusFilter] = useState('All'); // 'All', 'Enabled', 'Disabled'
 
     const filteredDepartments = departments.filter(d =>
         d.name.toLowerCase().includes(deptSearch.toLowerCase()) ||
@@ -87,12 +68,18 @@ export default function HospitalDashboard() {
 
     const filteredDoctors = doctors.filter(d =>
         (doctorDeptFilter === 'All' || d.dept === doctorDeptFilter) &&
+        (accountStatusFilter === 'All' ||
+            (accountStatusFilter === 'Enabled' && d.active) ||
+            (accountStatusFilter === 'Disabled' && !d.active)) &&
         (d.name.toLowerCase().includes(doctorSearch.toLowerCase()) ||
             d.id.toLowerCase().includes(doctorSearch.toLowerCase()))
     );
 
     const filteredStaff = staff.filter(s =>
         (staffDeptFilter === 'All' || s.dept === staffDeptFilter) &&
+        (accountStatusFilter === 'All' ||
+            (accountStatusFilter === 'Enabled' && s.active) ||
+            (accountStatusFilter === 'Disabled' && !s.active)) &&
         (s.name.toLowerCase().includes(staffSearch.toLowerCase()) ||
             s.id.toLowerCase().includes(staffSearch.toLowerCase()))
     );
@@ -101,10 +88,15 @@ export default function HospitalDashboard() {
         if (profile?.hospital_id) fetchDashboardData();
     }, [profile]);
 
-    const fetchDashboardData = async () => {
+    const getDeptName = (deptId) => {
+        const dept = departments.find(d => d.id === deptId);
+        return dept ? dept.name : deptId || '—';
+    };
+
+    const fetchDashboardData = async (isRefresh = false) => {
         if (!profile?.hospital_id) return;
         try {
-            setLoading(true);
+            if (!isRefresh) setLoading(true);
             setError(null);
             const [deptData, docData, staffData, statsData] = await Promise.all([
                 hospitalService.getDepartments(profile.hospital_id),
@@ -133,25 +125,34 @@ export default function HospitalDashboard() {
     };
 
     const handleSetAccountStatus = async (id, isActive) => {
+        // Restriction: Hospital Authority cannot re-enable accounts
+        if (isActive) {
+            toast.error("You don't have access to activate the account", {
+                duration: 4000,
+                position: 'top-center',
+                style: {
+                    borderRadius: '10px',
+                    background: '#333',
+                    color: '#fff',
+                },
+            });
+            return;
+        }
+
         try {
-            await hospitalService.setAccountStatus(id, isActive);
-            await fetchDashboardData();
+            const promise = hospitalService.setAccountStatus(id, isActive);
+            toast.promise(promise, {
+                loading: 'Updating status...',
+                success: 'Account disabled successfully',
+                error: 'Failed to update status',
+            });
+            await promise;
+            await fetchDashboardData(true);
         } catch (err) {
             console.error('Failed to update status', err);
-            alert('Failed to update status: ' + err.message);
         }
     };
 
-    const handleDeleteAccount = async (id, name) => {
-        if (!window.confirm(`Are you sure you want to PERMANENTLY delete account for ${name}? Historical records will be preserved.`)) return;
-        try {
-            await hospitalService.deleteAccount(id);
-            await fetchDashboardData();
-        } catch (err) {
-            console.error('Failed to delete account', err);
-            alert('Failed to delete account: ' + err.message);
-        }
-    };
 
     const handleEditDoctor = async (e) => {
         e.preventDefault();
@@ -163,10 +164,10 @@ export default function HospitalDashboard() {
             });
             setEditDoctorOpen(false);
             // Refresh all data so department doctor counts update too
-            await fetchDashboardData();
+            await fetchDashboardData(true);
         } catch (err) {
             console.error('Failed to update doctor', err);
-            alert('Failed to update doctor: ' + err.message);
+            toast.error('Failed to update doctor: ' + err.message);
         } finally {
             setSubmitting(false);
         }
@@ -186,10 +187,10 @@ export default function HospitalDashboard() {
             });
             setEditStaffOpen(false);
             // Refresh all data so department staff counts update
-            await fetchDashboardData();
+            await fetchDashboardData(true);
         } catch (err) {
             console.error('Failed to update staff', err);
-            alert('Failed to update staff: ' + err.message);
+            toast.error('Failed to update staff: ' + err.message);
         } finally {
             setSubmitting(false);
         }
@@ -204,13 +205,18 @@ export default function HospitalDashboard() {
     const handleAddDepartment = async (e) => {
         e.preventDefault();
         try {
-            await hospitalService.addDepartment(newDeptData, profile.hospital_id);
+            const promise = hospitalService.addDepartment(newDeptData, profile.hospital_id);
+            toast.promise(promise, {
+                loading: 'Adding department...',
+                success: 'Department added successfully',
+                error: (err) => `Failed to add department: ${err.message}`
+            });
+            await promise;
             setIsDeptModalOpen(false);
             setNewDeptData({ id: '', name: '', head: '', doctors: 0, staff: 0 });
-            fetchDashboardData();
+            fetchDashboardData(true);
         } catch (err) {
             console.error('Failed to add department', err);
-            alert('Failed to add department: ' + err.message);
         }
     };
 
@@ -220,8 +226,15 @@ export default function HospitalDashboard() {
         setRegistrationError(null);
         try {
             if (!profile?.hospital_id) throw new Error("Hospital session expired. Please refresh.");
+            if (!newDoctorData.dept) throw new Error("Please select a department.");
 
-            const result = await hospitalService.registerDoctor(newDoctorData, profile.hospital_id);
+            const promise = hospitalService.registerDoctor(newDoctorData, profile.hospital_id);
+            toast.promise(promise, {
+                loading: 'Registering doctor...',
+                success: 'Doctor registered successfully',
+                error: (err) => `Failed to register doctor: ${err.message}`
+            });
+            const result = await promise;
             setIsDoctorModalOpen(false);
             setRegistrationResult({
                 name: newDoctorData.name,
@@ -230,7 +243,7 @@ export default function HospitalDashboard() {
                 role: 'Doctor',
             });
             setNewDoctorData({ name: '', email: '', dept: '', specialization: '' });
-            fetchDashboardData();
+            fetchDashboardData(true);
         } catch (err) {
             console.error('Failed to register doctor', err);
             const msg = err.message || '';
@@ -250,8 +263,15 @@ export default function HospitalDashboard() {
         setRegistrationError(null);
         try {
             if (!profile?.hospital_id) throw new Error("Hospital session expired. Please refresh.");
+            if (!newStaffData.dept) throw new Error("Please select a department.");
 
-            const result = await hospitalService.registerStaff(newStaffData, profile.hospital_id);
+            const promise = hospitalService.registerStaff(newStaffData, profile.hospital_id);
+            toast.promise(promise, {
+                loading: 'Registering staff...',
+                success: 'Staff registered successfully',
+                error: (err) => `Failed to register staff: ${err.message}`
+            });
+            const result = await promise;
             setIsStaffModalOpen(false);
             setRegistrationResult({
                 name: newStaffData.name,
@@ -260,7 +280,7 @@ export default function HospitalDashboard() {
                 role: 'Staff',
             });
             setNewStaffData({ name: '', email: '', dept: '' });
-            fetchDashboardData();
+            fetchDashboardData(true);
         } catch (err) {
             console.error('Failed to register staff', err);
             const msg = err.message || '';
@@ -311,7 +331,7 @@ export default function HospitalDashboard() {
                             <Building2 className="w-6 h-6 text-white" />
                         </div>
                         <div>
-                            <h1 className="font-bold text-gray-900 leading-tight text-lg">Hospital Authority Dashboard</h1>
+                            <h1 className="font-bold text-gray-900 leading-tight text-lg tracking-tight">Hospital Authority Dashboard</h1>
                             <p className="text-xs text-gray-500">{profile?.full_name ?? 'Hospital Admin'}</p>
                         </div>
                     </div>
@@ -321,16 +341,16 @@ export default function HospitalDashboard() {
                     <div className="space-y-2">
                         <button
                             onClick={() => setIsDoctorModalOpen(true)}
-                            className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+                            className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 hover:border-gray-300 hover:shadow-sm transition-all cursor-pointer group"
                         >
-                            <UserPlus className="w-5 h-5 text-gray-500" />
+                            <UserPlus className="w-5 h-5 text-gray-400 group-hover:text-purple-600 transition-colors" />
                             Register Doctor
                         </button>
                         <button
                             onClick={() => setIsStaffModalOpen(true)}
-                            className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+                            className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 hover:border-gray-300 hover:shadow-sm transition-all cursor-pointer group"
                         >
-                            <UserPlus className="w-5 h-5 text-gray-500" />
+                            <UserPlus className="w-5 h-5 text-gray-400 group-hover:text-purple-600 transition-colors" />
                             Register Staff
                         </button>
                     </div>
@@ -355,7 +375,7 @@ export default function HospitalDashboard() {
                         <h4 className="font-bold text-purple-900 text-sm mb-1">Your Scope</h4>
                         <p className="text-xs text-purple-700 mb-3 block">Hospital Workforce Management</p>
                         <ul className="space-y-2">
-                            {['Department management', 'Doctor registration', 'Staff registration', 'AI Analytics (aggregated data)'].map((item, i) => (
+                            {['Department management', 'Doctor registration', 'Staff registration', 'Manage accounts', 'AI Analytics'].map((item, i) => (
                                 <li key={i} className="text-xs text-purple-800 flex items-center gap-2">
                                     <CheckCircle className="w-3.5 h-3.5 text-purple-600" />
                                     {item}
@@ -368,7 +388,7 @@ export default function HospitalDashboard() {
                     <div className="pt-4 border-t border-gray-100 mt-2">
                         <button
                             onClick={() => setManageAccountsOpen(!manageAccountsOpen)}
-                            className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-gray-50 rounded-lg transition-colors group"
+                            className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-gray-50 rounded-lg transition-colors group cursor-pointer"
                         >
                             <div className="flex items-center gap-3">
                                 <UserCog className="w-5 h-5 text-gray-400 group-hover:text-blue-600" />
@@ -399,9 +419,9 @@ export default function HospitalDashboard() {
                 <div className="p-4 border-t border-gray-100 mt-auto">
                     <button
                         onClick={handleLogout}
-                        className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-red-600 rounded-lg transition-colors"
+                        className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-600 hover:bg-red-50 hover:text-red-600 rounded-lg transition-all cursor-pointer group"
                     >
-                        <LogOut className="w-5 h-5" />
+                        <LogOut className="w-5 h-5 text-gray-400 group-hover:text-red-600 transition-colors" />
                         Logout
                     </button>
                 </div>
@@ -461,7 +481,7 @@ export default function HospitalDashboard() {
 
                 <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
                     {/* Tabs */}
-                    <div className="bg-gray-100 p-1 rounded-xl flex items-center">
+                    <div className="bg-gray-100 p-1.5 rounded-xl flex items-center shadow-inner">
                         {['Departments', 'Doctors', 'Staff', 'AI Analytics'].map((tab) => {
                             const id = tab.toLowerCase().replace(' ', '');
                             const isActive = activeTab === id;
@@ -469,14 +489,14 @@ export default function HospitalDashboard() {
                                 <button
                                     key={id}
                                     onClick={() => setActiveTab(id)}
-                                    className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${isActive
+                                    className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all cursor-pointer ${isActive
                                         ? 'bg-white text-gray-900 shadow-sm'
-                                        : 'text-gray-500 hover:text-gray-700'
+                                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
                                         }`}
                                 >
                                     {tab === 'AI Analytics' ? (
                                         <div className="flex items-center gap-2">
-                                            <Brain className="w-4 h-4" />
+                                            <Brain className={`w-4 h-4 ${isActive ? 'text-purple-600' : ''}`} />
                                             {tab}
                                         </div>
                                     ) : tab}
@@ -488,362 +508,471 @@ export default function HospitalDashboard() {
                     {/* Hospital Authority Badge */}
                     <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 px-4 py-2 rounded-full">
                         <Shield className="w-4 h-4 text-blue-700" />
-                        <span className="text-xs font-bold text-blue-700 tracking-wider">HOSPITAL AUTHORITY</span>
+                        <span className="text-xs font-bold text-blue-700 tracking-wider">Hospital</span>
                     </div>
                 </div>
 
                 {/* Tab Content */}
-                <div className="bg-white border border-gray-200 rounded-xl shadow-sm animate-fade-in">
+                <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden min-h-[600px] flex flex-col">
+                    <AnimatePresence mode="wait">
+                        <motion.div
+                            key={activeTab}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            transition={{ duration: 0.2 }}
+                            className="flex-1 flex flex-col"
+                        >
 
-                    {/* Departments Tab */}
-                    {activeTab === 'departments' && (
-                        <>
-                            <div className="p-6 border-b border-gray-100 bg-white space-y-4">
-                                <div className="flex justify-between items-center">
-                                    <div>
-                                        <h3 className="font-bold text-gray-900 text-lg">Department Management</h3>
-                                        <p className="text-sm text-gray-500">Create and organize hospital departments</p>
+                            {/* Departments Tab */}
+                            {activeTab === 'departments' && (
+                                <>
+                                    <div className="p-6 border-b border-gray-100 bg-white space-y-4">
+                                        <div className="flex justify-between items-center">
+                                            <div>
+                                                <h3 className="font-bold text-gray-900 text-lg">Department Management</h3>
+                                                <p className="text-sm text-gray-500">Create and organize hospital departments</p>
+                                            </div>
+                                            <button
+                                                onClick={() => setIsDeptModalOpen(true)}
+                                                className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2.5 rounded-lg font-medium transition-colors cursor-pointer"
+                                            >
+                                                <Plus className="w-5 h-5" />
+                                                Add Department
+                                            </button>
+                                        </div>
+                                        <div className="relative">
+                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                            <input
+                                                type="text"
+                                                placeholder="Search departments..."
+                                                value={deptSearch}
+                                                onChange={(e) => setDeptSearch(e.target.value)}
+                                                className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-100 focus:border-purple-500"
+                                            />
+                                        </div>
                                     </div>
-                                    <button
-                                        onClick={() => setIsDeptModalOpen(true)}
-                                        className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2.5 rounded-lg font-medium transition-colors"
-                                    >
-                                        <Plus className="w-5 h-5" />
-                                        Add Department
-                                    </button>
-                                </div>
-                                <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                    <input
-                                        type="text"
-                                        placeholder="Search departments..."
-                                        value={deptSearch}
-                                        onChange={(e) => setDeptSearch(e.target.value)}
-                                        className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-100 focus:border-purple-500"
-                                    />
-                                </div>
-                            </div>
-                            <div className="max-h-[500px] overflow-y-auto">
-                                {filteredDepartments.length === 0 ? (
-                                    <div className="p-12 text-center text-gray-400">
-                                        <Building2 className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                                        <p className="font-medium">No departments found</p>
-                                        <p className="text-sm mt-1">Add your first department using the button above</p>
+                                    <div className="max-h-[500px] overflow-y-auto">
+                                        {filteredDepartments.length === 0 ? (
+                                            <div className="p-12 text-center text-gray-400">
+                                                <Building2 className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                                                <p className="font-medium">No departments found</p>
+                                                <p className="text-sm mt-1">Add your first department using the button above</p>
+                                            </div>
+                                        ) : (
+                                            <table className="w-full">
+                                                <thead className="bg-gray-50 text-left sticky top-0 z-10">
+                                                    <tr>
+                                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Department ID</th>
+                                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Department Name</th>
+                                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Head of Department</th>
+                                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Doctors</th>
+                                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Staff</th>
+                                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Status</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100">
+                                                    {filteredDepartments.map((dept) => (
+                                                        <tr key={dept.id} className="hover:bg-gray-50/50">
+                                                            <td className="px-6 py-4 text-sm font-medium text-gray-900">{dept.id}</td>
+                                                            <td className="px-6 py-4 text-sm text-gray-600">{dept.name}</td>
+                                                            <td className="px-6 py-4 text-sm text-gray-500">{dept.head}</td>
+                                                            <td className="px-6 py-4 text-sm text-gray-600">{dept.doctors}</td>
+                                                            <td className="px-6 py-4 text-sm text-gray-600">{dept.staff}</td>
+                                                            <td className="px-6 py-4">
+                                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                                                    {dept.status ?? 'Active'}
+                                                                </span>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        )}
                                     </div>
-                                ) : (
-                                    <table className="w-full">
-                                        <thead className="bg-gray-50 text-left sticky top-0 z-10">
-                                            <tr>
-                                                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Department ID</th>
-                                                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Department Name</th>
-                                                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Head of Department</th>
-                                                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Doctors</th>
-                                                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Staff</th>
-                                                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Status</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-100">
-                                            {filteredDepartments.map((dept) => (
-                                                <tr key={dept.id} className="hover:bg-gray-50/50">
-                                                    <td className="px-6 py-4 text-sm font-medium text-gray-900">{dept.id}</td>
-                                                    <td className="px-6 py-4 text-sm text-gray-600">{dept.name}</td>
-                                                    <td className="px-6 py-4 text-sm text-gray-500">{dept.head}</td>
-                                                    <td className="px-6 py-4 text-sm text-gray-600">{dept.doctors}</td>
-                                                    <td className="px-6 py-4 text-sm text-gray-600">{dept.staff}</td>
-                                                    <td className="px-6 py-4">
-                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                                            {dept.status ?? 'Active'}
-                                                        </span>
-                                                    </td>
+                                </>
+                            )}
+
+                            {/* Doctors Tab */}
+                            {activeTab === 'doctors' && (
+                                <>
+                                    <div className="p-6 border-b border-gray-100 bg-white space-y-4">
+                                        <div className="flex justify-between items-center">
+                                            <div>
+                                                <h3 className="font-bold text-gray-900 text-lg">Doctor Management</h3>
+                                                <p className="text-sm text-gray-500">Manage doctor accounts and permissions</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-4">
+                                            <div className="relative flex-1">
+                                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                                <input
+                                                    type="text"
+                                                    placeholder="Search doctors..."
+                                                    value={doctorSearch}
+                                                    onChange={(e) => setDoctorSearch(e.target.value)}
+                                                    className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-100 focus:border-purple-500"
+                                                />
+                                            </div>
+                                            <div className="w-64">
+                                                <Select
+                                                    value={doctorDeptFilter}
+                                                    onChange={setDoctorDeptFilter}
+                                                    options={filterDeptOptions}
+                                                    placeholder="Filter by Department"
+                                                />
+                                            </div>
+                                            <div className="w-48">
+                                                <Select
+                                                    value={accountStatusFilter}
+                                                    onChange={setAccountStatusFilter}
+                                                    options={[
+                                                        { value: 'All', label: 'All Status' },
+                                                        { value: 'Enabled', label: 'Enabled Only' },
+                                                        { value: 'Disabled', label: 'Disabled Only' }
+                                                    ]}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="max-h-[500px] overflow-y-auto">
+                                        {filteredDoctors.length === 0 ? (
+                                            <div className="p-12 text-center text-gray-400">
+                                                <Stethoscope className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                                                <p className="font-medium">No doctors found</p>
+                                            </div>
+                                        ) : (
+                                            <table className="w-full">
+                                                <thead className="bg-gray-50 text-left sticky top-0 z-10">
+                                                    <tr>
+                                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Name</th>
+                                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Department</th>
+                                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Specialization</th>
+                                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Join Date</th>
+                                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100">
+                                                    <AnimatePresence mode="popLayout">
+                                                        {filteredDoctors.map((doc, idx) => (
+                                                            <motion.tr
+                                                                key={doc.id}
+                                                                initial={{ opacity: 0, y: 10 }}
+                                                                animate={{ opacity: 1, y: 0 }}
+                                                                exit={{ opacity: 0, x: -20 }}
+                                                                transition={{ duration: 0.2, delay: idx * 0.03 }}
+                                                                className="hover:bg-gray-50/50 group"
+                                                            >
+                                                                <td className="px-6 py-4 text-sm text-gray-900">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="font-medium text-gray-900">{doc.name}</span>
+                                                                        <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded uppercase font-bold tracking-wider">Doctor</span>
+                                                                        {!doc.active && (
+                                                                            <span className="text-[10px] bg-red-50 text-red-600 px-1.5 py-0.5 rounded uppercase font-bold tracking-wider animate-pulse">Disabled</span>
+                                                                        )}
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-6 py-4 text-sm text-gray-600">{getDeptName(doc.dept)}</td>
+                                                                <td className="px-6 py-4 text-sm text-gray-500">{doc.spec}</td>
+                                                                <td className="px-6 py-4 text-sm text-gray-500">{doc.join}</td>
+                                                                <td className="px-6 py-4">
+                                                                    <button
+                                                                        onClick={() => openEditDoctor(doc)}
+                                                                        disabled={!doc.active}
+                                                                        className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-all ${doc.active
+                                                                            ? "text-purple-600 hover:text-purple-800 hover:bg-purple-50 border-purple-200 shadow-sm cursor-pointer"
+                                                                            : "text-gray-400 bg-gray-50 border-gray-100 cursor-not-allowed opacity-60"
+                                                                            }`}
+                                                                        title={!doc.active ? "Enable account to edit" : "Edit doctor details"}
+                                                                    >
+                                                                        <Edit className="w-3.5 h-3.5" /> Edit
+                                                                    </button>
+                                                                </td>
+                                                            </motion.tr>
+                                                        ))}
+                                                    </AnimatePresence>
+                                                </tbody>
+                                            </table>
+                                        )}
+                                    </div>
+                                </>
+                            )}
+
+                            {/* Staff Tab */}
+                            {activeTab === 'staff' && (
+                                <>
+                                    <div className="p-6 border-b border-gray-100 bg-white space-y-4">
+                                        <div className="flex justify-between items-center">
+                                            <div>
+                                                <h3 className="font-bold text-gray-900 text-lg">Staff Management</h3>
+                                                <p className="text-sm text-gray-500">Manage staff accounts and permissions</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-4">
+                                            <div className="relative flex-1">
+                                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                                <input
+                                                    type="text"
+                                                    placeholder="Search staff..."
+                                                    value={staffSearch}
+                                                    onChange={(e) => setStaffSearch(e.target.value)}
+                                                    className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-100 focus:border-purple-500"
+                                                />
+                                            </div>
+                                            <div className="w-64">
+                                                <Select
+                                                    value={staffDeptFilter}
+                                                    onChange={setStaffDeptFilter}
+                                                    options={filterDeptOptions}
+                                                    placeholder="Filter by Department"
+                                                />
+                                            </div>
+                                            <div className="w-48">
+                                                <Select
+                                                    value={accountStatusFilter}
+                                                    onChange={setAccountStatusFilter}
+                                                    options={[
+                                                        { value: 'All', label: 'All Status' },
+                                                        { value: 'Enabled', label: 'Enabled Only' },
+                                                        { value: 'Disabled', label: 'Disabled Only' }
+                                                    ]}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="max-h-[500px] overflow-y-auto">
+                                        {filteredStaff.length === 0 ? (
+                                            <div className="p-12 text-center text-gray-400">
+                                                <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                                                <p className="font-medium">No staff members found</p>
+                                            </div>
+                                        ) : (
+                                            <table className="w-full">
+                                                <thead className="bg-gray-50 text-left sticky top-0 z-10">
+                                                    <tr>
+                                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Name</th>
+                                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Department</th>
+                                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Join Date</th>
+                                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100">
+                                                    <AnimatePresence mode="popLayout">
+                                                        {filteredStaff.map((s, idx) => (
+                                                            <motion.tr
+                                                                key={s.id}
+                                                                initial={{ opacity: 0, y: 10 }}
+                                                                animate={{ opacity: 1, y: 0 }}
+                                                                exit={{ opacity: 0, x: -20 }}
+                                                                transition={{ duration: 0.2, delay: idx * 0.03 }}
+                                                                className="hover:bg-gray-50/50 group"
+                                                            >
+                                                                <td className="px-6 py-4 text-sm text-gray-900">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="font-medium text-gray-900">{s.name}</span>
+                                                                        <span className="text-[10px] bg-green-50 text-green-600 px-1.5 py-0.5 rounded uppercase font-bold tracking-wider">Staff</span>
+                                                                        {!s.active && (
+                                                                            <span className="text-[10px] bg-red-50 text-red-600 px-1.5 py-0.5 rounded uppercase font-bold tracking-wider animate-pulse">Disabled</span>
+                                                                        )}
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-6 py-4 text-sm text-gray-600">{getDeptName(s.dept)}</td>
+                                                                <td className="px-6 py-4 text-sm text-gray-500">{s.join}</td>
+                                                                <td className="px-6 py-4">
+                                                                    <button
+                                                                        onClick={() => openEditStaff(s)}
+                                                                        disabled={!s.active}
+                                                                        className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-all ${s.active
+                                                                            ? "text-purple-600 hover:text-purple-800 hover:bg-purple-50 border-purple-200 shadow-sm cursor-pointer"
+                                                                            : "text-gray-400 bg-gray-50 border-gray-100 cursor-not-allowed opacity-60"
+                                                                            }`}
+                                                                        title={!s.active ? "Enable account to edit" : "Edit staff details"}
+                                                                    >
+                                                                        <Edit className="w-3.5 h-3.5" /> Edit
+                                                                    </button>
+                                                                </td>
+                                                            </motion.tr>
+                                                        ))}
+                                                    </AnimatePresence>
+                                                </tbody>
+                                            </table>
+                                        )}
+                                    </div>
+                                </>
+                            )}
+
+                            {/* AI Analytics Tab */}
+                            {activeTab === 'aianalytics' && (
+                                <AiAnalytics />
+                            )}
+
+                            {/* Manage Doctors View */}
+                            {activeTab === 'manage-doctors' && (
+                                <>
+                                    <div className="p-6 border-b border-gray-100 bg-white">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <div>
+                                                <h3 className="font-bold text-gray-900 text-lg">Manage Doctor Accounts</h3>
+                                                <p className="text-sm text-gray-500">Enable/Disable doctor logins or permenantly remove accounts</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-4">
+                                            <div className="relative flex-1">
+                                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                                <input
+                                                    type="text"
+                                                    placeholder="Search by name or email..."
+                                                    value={doctorSearch}
+                                                    onChange={(e) => setDoctorSearch(e.target.value)}
+                                                    className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500"
+                                                />
+                                            </div>
+                                            <div className="w-48">
+                                                <Select
+                                                    value={accountStatusFilter}
+                                                    onChange={setAccountStatusFilter}
+                                                    options={[
+                                                        { value: 'All', label: 'All Status' },
+                                                        { value: 'Enabled', label: 'Enabled Only' },
+                                                        { value: 'Disabled', label: 'Disabled Only' }
+                                                    ]}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="max-h-[500px] overflow-y-auto">
+                                        <table className="w-full">
+                                            <thead className="bg-gray-50 text-left sticky top-0 z-10">
+                                                <tr>
+                                                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Doctor Name</th>
+                                                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Email</th>
+                                                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase text-right">Login Status</th>
                                                 </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                )}
-                            </div>
-                        </>
-                    )}
-
-                    {/* Doctors Tab */}
-                    {activeTab === 'doctors' && (
-                        <>
-                            <div className="p-6 border-b border-gray-100 bg-white space-y-4">
-                                <div className="flex justify-between items-center">
-                                    <div>
-                                        <h3 className="font-bold text-gray-900 text-lg">Doctor Management</h3>
-                                        <p className="text-sm text-gray-500">Manage doctor accounts and permissions</p>
-                                    </div>
-                                </div>
-                                <div className="flex gap-4">
-                                    <div className="relative flex-1">
-                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                        <input
-                                            type="text"
-                                            placeholder="Search doctors..."
-                                            value={doctorSearch}
-                                            onChange={(e) => setDoctorSearch(e.target.value)}
-                                            className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-100 focus:border-purple-500"
-                                        />
-                                    </div>
-                                    <div className="w-64">
-                                        <Select
-                                            value={doctorDeptFilter}
-                                            onChange={setDoctorDeptFilter}
-                                            options={filterDeptOptions}
-                                            placeholder="Filter by Department"
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="max-h-[500px] overflow-y-auto">
-                                {filteredDoctors.length === 0 ? (
-                                    <div className="p-12 text-center text-gray-400">
-                                        <Stethoscope className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                                        <p className="font-medium">No doctors found</p>
-                                    </div>
-                                ) : (
-                                    <table className="w-full">
-                                        <thead className="bg-gray-50 text-left sticky top-0 z-10">
-                                            <tr>
-                                                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Name</th>
-                                                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Department</th>
-                                                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Specialization</th>
-                                                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Join Date</th>
-                                                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-100">
-                                            {filteredDoctors.map((doc) => (
-                                                <tr key={doc.id} className="hover:bg-gray-50/50">
-                                                    <td className="px-6 py-4 text-sm text-gray-900 flex items-center gap-2">
-                                                        {doc.name}
-                                                        <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded uppercase font-bold tracking-wider">Doctor</span>
-                                                    </td>
-                                                    <td className="px-6 py-4 text-sm text-gray-600">{doc.dept}</td>
-                                                    <td className="px-6 py-4 text-sm text-gray-500">{doc.spec}</td>
-                                                    <td className="px-6 py-4 text-sm text-gray-500">{doc.join}</td>
-                                                    <td className="px-6 py-4">
-                                                        <button
-                                                            onClick={() => openEditDoctor(doc)}
-                                                            className="flex items-center gap-1.5 text-xs font-medium text-purple-600 hover:text-purple-800 hover:bg-purple-50 px-3 py-1.5 rounded-lg border border-purple-200 transition-colors"
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-100">
+                                                <AnimatePresence mode="popLayout">
+                                                    {filteredDoctors.map((doc, idx) => (
+                                                        <motion.tr
+                                                            key={doc.id}
+                                                            initial={{ opacity: 0, scale: 0.98 }}
+                                                            animate={{ opacity: 1, scale: 1 }}
+                                                            exit={{ opacity: 0, scale: 0.98 }}
+                                                            transition={{ duration: 0.2, delay: idx * 0.02 }}
+                                                            className="hover:bg-gray-50/50 group"
                                                         >
-                                                            <Edit className="w-3.5 h-3.5" /> Edit
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                )}
-                            </div>
-                        </>
-                    )}
+                                                            <td className="px-6 py-4 text-sm font-medium text-gray-900">{doc.name}</td>
+                                                            <td className="px-6 py-4 text-sm text-gray-600">{doc.email}</td>
+                                                            <td className="px-6 py-4 text-right">
+                                                                {doc.active ? (
+                                                                    <button
+                                                                        onClick={() => handleSetAccountStatus(doc.id, false)}
+                                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-red-600 hover:bg-red-50 border border-transparent hover:border-red-100 transition-all shadow-sm active:scale-95 cursor-pointer"
+                                                                    >
+                                                                        <UserX className="w-3.5 h-3.5" /> Disable Account
+                                                                    </button>
+                                                                ) : (
+                                                                    <button
+                                                                        onClick={() => handleSetAccountStatus(doc.id, true)}
+                                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-gray-50 text-gray-400 border border-gray-100 cursor-help transition-all"
+                                                                        title="Higher authority required to re-enable"
+                                                                    >
+                                                                        <Lock className="w-3.5 h-3.5" /> Restricted (Disabled)
+                                                                    </button>
+                                                                )}
+                                                            </td>
+                                                        </motion.tr>
+                                                    ))}
+                                                </AnimatePresence>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </>
+                            )}
 
-                    {/* Staff Tab */}
-                    {activeTab === 'staff' && (
-                        <>
-                            <div className="p-6 border-b border-gray-100 bg-white space-y-4">
-                                <div className="flex justify-between items-center">
-                                    <div>
-                                        <h3 className="font-bold text-gray-900 text-lg">Staff Management</h3>
-                                        <p className="text-sm text-gray-500">Manage staff accounts and permissions</p>
+                            {/* Manage Staff View */}
+                            {activeTab === 'manage-staff' && (
+                                <>
+                                    <div className="p-6 border-b border-gray-100 bg-white">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <div>
+                                                <h3 className="font-bold text-gray-900 text-lg">Manage Staff Accounts</h3>
+                                                <p className="text-sm text-gray-500">Enable/Disable staff logins or deactivate accounts</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-4">
+                                            <div className="relative flex-1">
+                                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                                <input
+                                                    type="text"
+                                                    placeholder="Search by name or email..."
+                                                    value={staffSearch}
+                                                    onChange={(e) => setStaffSearch(e.target.value)}
+                                                    className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500"
+                                                />
+                                            </div>
+                                            <div className="w-48">
+                                                <Select
+                                                    value={accountStatusFilter}
+                                                    onChange={setAccountStatusFilter}
+                                                    options={[
+                                                        { value: 'All', label: 'All Status' },
+                                                        { value: 'Enabled', label: 'Enabled Only' },
+                                                        { value: 'Disabled', label: 'Disabled Only' }
+                                                    ]}
+                                                />
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
-                                <div className="flex gap-4">
-                                    <div className="relative flex-1">
-                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                        <input
-                                            type="text"
-                                            placeholder="Search staff..."
-                                            value={staffSearch}
-                                            onChange={(e) => setStaffSearch(e.target.value)}
-                                            className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-100 focus:border-purple-500"
-                                        />
-                                    </div>
-                                    <div className="w-64">
-                                        <Select
-                                            value={staffDeptFilter}
-                                            onChange={setStaffDeptFilter}
-                                            options={filterDeptOptions}
-                                            placeholder="Filter by Department"
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="max-h-[500px] overflow-y-auto">
-                                {filteredStaff.length === 0 ? (
-                                    <div className="p-12 text-center text-gray-400">
-                                        <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                                        <p className="font-medium">No staff members found</p>
-                                    </div>
-                                ) : (
-                                    <table className="w-full">
-                                        <thead className="bg-gray-50 text-left sticky top-0 z-10">
-                                            <tr>
-                                                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Name</th>
-                                                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Department</th>
-                                                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Join Date</th>
-                                                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-100">
-                                            {filteredStaff.map((s) => (
-                                                <tr key={s.id} className="hover:bg-gray-50/50">
-                                                    <td className="px-6 py-4 text-sm text-gray-900 flex items-center gap-2">
-                                                        {s.name}
-                                                        <span className="text-[10px] bg-green-50 text-green-600 px-1.5 py-0.5 rounded uppercase font-bold tracking-wider">Staff</span>
-                                                    </td>
-                                                    <td className="px-6 py-4 text-sm text-gray-600">{s.dept}</td>
-                                                    <td className="px-6 py-4 text-sm text-gray-500">{s.join}</td>
-                                                    <td className="px-6 py-4">
-                                                        <button
-                                                            onClick={() => openEditStaff(s)}
-                                                            className="flex items-center gap-1.5 text-xs font-medium text-purple-600 hover:text-purple-800 hover:bg-purple-50 px-3 py-1.5 rounded-lg border border-purple-200 transition-colors"
+                                    <div className="max-h-[500px] overflow-y-auto">
+                                        <table className="w-full">
+                                            <thead className="bg-gray-50 text-left sticky top-0 z-10">
+                                                <tr>
+                                                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Staff Name</th>
+                                                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Email</th>
+                                                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase text-right">Login Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-100">
+                                                <AnimatePresence mode="popLayout">
+                                                    {filteredStaff.map((s, idx) => (
+                                                        <motion.tr
+                                                            key={s.id}
+                                                            initial={{ opacity: 0, scale: 0.98 }}
+                                                            animate={{ opacity: 1, scale: 1 }}
+                                                            exit={{ opacity: 0, scale: 0.98 }}
+                                                            transition={{ duration: 0.2, delay: idx * 0.02 }}
+                                                            className="hover:bg-gray-50/50 group"
                                                         >
-                                                            <Edit className="w-3.5 h-3.5" /> Edit
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                )}
-                            </div>
-                        </>
-                    )}
-
-                    {/* AI Analytics Tab */}
-                    {activeTab === 'aianalytics' && (
-                        <AiAnalytics />
-                    )}
-
-                    {/* Manage Doctors View */}
-                    {activeTab === 'manage-doctors' && (
-                        <>
-                            <div className="p-6 border-b border-gray-100 bg-white">
-                                <div className="flex justify-between items-center mb-4">
-                                    <div>
-                                        <h3 className="font-bold text-gray-900 text-lg">Manage Doctor Accounts</h3>
-                                        <p className="text-sm text-gray-500">Enable/Disable doctor logins or permenantly remove accounts</p>
+                                                            <td className="px-6 py-4 text-sm font-medium text-gray-900">{s.name}</td>
+                                                            <td className="px-6 py-4 text-sm text-gray-600">{s.email}</td>
+                                                            <td className="px-6 py-4 text-right">
+                                                                {s.active ? (
+                                                                    <button
+                                                                        onClick={() => handleSetAccountStatus(s.id, false)}
+                                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-red-600 hover:bg-red-50 border border-transparent hover:border-red-100 transition-all shadow-sm active:scale-95 cursor-pointer"
+                                                                    >
+                                                                        <UserX className="w-3.5 h-3.5" /> Disable Account
+                                                                    </button>
+                                                                ) : (
+                                                                    <button
+                                                                        onClick={() => handleSetAccountStatus(s.id, true)}
+                                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-gray-50 text-gray-400 border border-gray-100 cursor-help transition-all"
+                                                                        title="Higher authority required to re-enable"
+                                                                    >
+                                                                        <Lock className="w-3.5 h-3.5" /> Restricted (Disabled)
+                                                                    </button>
+                                                                )}
+                                                            </td>
+                                                        </motion.tr>
+                                                    ))}
+                                                </AnimatePresence>
+                                            </tbody>
+                                        </table>
                                     </div>
-                                </div>
-                                <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                    <input
-                                        type="text"
-                                        placeholder="Search by name or email..."
-                                        value={doctorSearch}
-                                        onChange={(e) => setDoctorSearch(e.target.value)}
-                                        className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500"
-                                    />
-                                </div>
-                            </div>
-                            <div className="max-h-[500px] overflow-y-auto">
-                                <table className="w-full">
-                                    <thead className="bg-gray-50 text-left sticky top-0 z-10">
-                                        <tr>
-                                            <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Doctor Name</th>
-                                            <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Email</th>
-                                            <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase text-center">Login Status</th>
-                                            <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase text-right">Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100">
-                                        {filteredDoctors.map((doc) => (
-                                            <tr key={doc.id} className="hover:bg-gray-50/50">
-                                                <td className="px-6 py-4 text-sm font-medium text-gray-900">{doc.name}</td>
-                                                <td className="px-6 py-4 text-sm text-gray-600">{doc.email}</td>
-                                                <td className="px-6 py-4 text-center">
-                                                    <button
-                                                        onClick={() => handleSetAccountStatus(doc.id, !doc.active)}
-                                                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all ${doc.active
-                                                            ? 'bg-green-50 text-green-700 hover:bg-green-100'
-                                                            : 'bg-red-50 text-red-700 hover:bg-red-100'}`}
-                                                    >
-                                                        {doc.active ? <UserCheck className="w-3.5 h-3.5" /> : <UserX className="w-3.5 h-3.5" />}
-                                                        {doc.active ? 'ENABLED' : 'DISABLED'}
-                                                    </button>
-                                                </td>
-                                                <td className="px-6 py-4 text-right">
-                                                    <button
-                                                        onClick={() => handleDeleteAccount(doc.id, doc.name)}
-                                                        className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
-                                                        title="Permanently Delete Account"
-                                                    >
-                                                        <Trash2 className="w-5 h-5" />
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </>
-                    )}
-
-                    {/* Manage Staff View */}
-                    {activeTab === 'manage-staff' && (
-                        <>
-                            <div className="p-6 border-b border-gray-100 bg-white">
-                                <div className="flex justify-between items-center mb-4">
-                                    <div>
-                                        <h3 className="font-bold text-gray-900 text-lg">Manage Staff Accounts</h3>
-                                        <p className="text-sm text-gray-500">Enable/Disable staff logins or permenantly remove accounts</p>
-                                    </div>
-                                </div>
-                                <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                    <input
-                                        type="text"
-                                        placeholder="Search by name or email..."
-                                        value={staffSearch}
-                                        onChange={(e) => setStaffSearch(e.target.value)}
-                                        className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500"
-                                    />
-                                </div>
-                            </div>
-                            <div className="max-h-[500px] overflow-y-auto">
-                                <table className="w-full">
-                                    <thead className="bg-gray-50 text-left sticky top-0 z-10">
-                                        <tr>
-                                            <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Staff Name</th>
-                                            <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Email</th>
-                                            <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase text-center">Login Status</th>
-                                            <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase text-right">Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100">
-                                        {filteredStaff.map((s) => (
-                                            <tr key={s.id} className="hover:bg-gray-50/50">
-                                                <td className="px-6 py-4 text-sm font-medium text-gray-900">{s.name}</td>
-                                                <td className="px-6 py-4 text-sm text-gray-600">{s.email}</td>
-                                                <td className="px-6 py-4 text-center">
-                                                    <button
-                                                        onClick={() => handleSetAccountStatus(s.id, !s.active)}
-                                                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all ${s.active
-                                                            ? 'bg-green-50 text-green-700 hover:bg-green-100'
-                                                            : 'bg-red-50 text-red-700 hover:bg-red-100'}`}
-                                                    >
-                                                        {s.active ? <UserCheck className="w-3.5 h-3.5" /> : <UserX className="w-3.5 h-3.5" />}
-                                                        {s.active ? 'ENABLED' : 'DISABLED'}
-                                                    </button>
-                                                </td>
-                                                <td className="px-6 py-4 text-right">
-                                                    <button
-                                                        onClick={() => handleDeleteAccount(s.id, s.name)}
-                                                        className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
-                                                        title="Permanently Delete Account"
-                                                    >
-                                                        <Trash2 className="w-5 h-5" />
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </>
-                    )}
+                                </>
+                            )}
+                        </motion.div>
+                    </AnimatePresence>
                 </div>
             </main>
 
@@ -894,8 +1023,8 @@ export default function HospitalDashboard() {
                         Department will be created and available for assignment.
                     </div>
 
-                    <Button type="submit" className="bg-purple-600 hover:bg-purple-700">
-                        Add Department
+                    <Button type="submit" className="w-full bg-purple-600 hover:bg-purple-700 mt-4 flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all active:scale-[0.98]">
+                        <Plus className="w-4 h-4" /> Add Department
                     </Button>
                 </form>
             </Modal>
@@ -942,10 +1071,10 @@ export default function HospitalDashboard() {
                         onChange={(e) => setNewDoctorData({ ...newDoctorData, specialization: e.target.value })}
                     />
                     <div className="bg-blue-50 p-3 rounded-lg text-xs text-blue-700">
-                        A temporary password will be auto-generated and the doctor can reset it on first login.
+                        A temporary password will be auto-generated and the doctor can reset using forgot password.
                     </div>
-                    <Button type="submit" disabled={submitting} className="bg-purple-600 hover:bg-purple-700 mt-6 flex items-center gap-2">
-                        {submitting ? <><Loader className="w-4 h-4 animate-spin" /> Registering…</> : 'Register Doctor'}
+                    <Button type="submit" disabled={submitting} className="w-full bg-purple-600 hover:bg-purple-700 mt-6 flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all active:scale-[0.98]">
+                        {submitting ? <><Loader className="w-4 h-4 animate-spin" /> Registering…</> : <><UserPlus className="w-4 h-4" /> Register Doctor</>}
                     </Button>
                 </form>
             </Modal>
@@ -986,10 +1115,10 @@ export default function HospitalDashboard() {
                         onChange={(val) => setNewStaffData({ ...newStaffData, dept: val })}
                     />
                     <div className="bg-blue-50 p-3 rounded-lg text-xs text-blue-700">
-                        A temporary password will be auto-generated and the staff member can reset it on first login.
+                        A temporary password will be auto-generated and the doctor can reset using forgot password.
                     </div>
-                    <Button type="submit" disabled={submitting} className="bg-purple-600 hover:bg-purple-700 mt-6 flex items-center gap-2">
-                        {submitting ? <><Loader className="w-4 h-4 animate-spin" /> Registering…</> : 'Register Staff'}
+                    <Button type="submit" disabled={submitting} className="w-full bg-purple-600 hover:bg-purple-700 mt-6 flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all active:scale-[0.98]">
+                        {submitting ? <><Loader className="w-4 h-4 animate-spin" /> Registering…</> : <><UserPlus className="w-4 h-4" /> Register Staff</>}
                     </Button>
                 </form>
             </Modal>
@@ -1042,9 +1171,9 @@ export default function HospitalDashboard() {
 
                         <Button
                             onClick={() => setRegistrationResult(null)}
-                            className="w-full bg-purple-600 hover:bg-purple-700"
+                            className="w-full bg-purple-600 hover:bg-purple-700 shadow-md hover:shadow-lg transition-all active:scale-[0.98] flex items-center justify-center gap-2"
                         >
-                            Done
+                            <CheckCircle className="w-4 h-4" /> Done
                         </Button>
                     </div>
                 )}
@@ -1068,7 +1197,7 @@ export default function HospitalDashboard() {
                         value={editDoctorData.specialization}
                         onChange={(e) => setEditDoctorData({ ...editDoctorData, specialization: e.target.value })}
                     />
-                    <Button type="submit" disabled={submitting} className="bg-purple-600 hover:bg-purple-700 flex items-center gap-2">
+                    <Button type="submit" disabled={submitting} className="bg-purple-600 hover:bg-purple-700 flex items-center justify-center gap-2 mt-4 cursor-pointer">
                         {submitting ? <><Loader className="w-4 h-4 animate-spin" /> Saving…</> : 'Save Changes'}
                     </Button>
                 </form>
@@ -1091,7 +1220,7 @@ export default function HospitalDashboard() {
                     <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-xs text-blue-700">
                         Changing department will update staff count on the Departments tab.
                     </div>
-                    <Button type="submit" disabled={submitting} className="bg-purple-600 hover:bg-purple-700 flex items-center gap-2">
+                    <Button type="submit" disabled={submitting} className="bg-purple-600 hover:bg-purple-700 flex items-center justify-center gap-2 mt-4 cursor-pointer">
                         {submitting ? <><Loader className="w-4 h-4 animate-spin" /> Saving…</> : 'Save Changes'}
                     </Button>
                 </form>

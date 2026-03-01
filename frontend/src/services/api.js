@@ -4,52 +4,68 @@
 
 import { supabase } from "../lib/supabase";
 
-const EDGE_FN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`;
 const DRF_BASE_URL = "http://localhost:8000/api";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Returns the current auth session (JWT). */
-async function getSession() {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  return session;
+/**
+ * Refreshes the access token using the refresh token.
+ */
+async function refreshAccessToken() {
+  const refreshToken = localStorage.getItem("refresh_token");
+  if (!refreshToken) throw new Error("No refresh token available");
+
+  const res = await fetch(`${DRF_BASE_URL}/auth/token/refresh/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh: refreshToken }),
+  });
+
+  if (!res.ok) {
+    // If refresh fails, clear all tokens and force logout
+    authService.logout();
+    window.location.href = "/login?session=expired";
+    throw new Error("Session expired. Please login again.");
+  }
+
+  const data = await res.json();
+  localStorage.setItem("access_token", data.access);
+  if (data.refresh) localStorage.setItem("refresh_token", data.refresh);
+  return data.access;
 }
 
-/** Call the Edge Function that uses the service-role key to create a new auth user. */
-async function createUserViaEdge(payload) {
-  const session = await getSession();
+/**
+ * Universal fetch wrapper that handles:
+ * 1. Automatic Bearer token inclusion
+ * 2. Automatic 401 intercept & token refresh
+ * 3. One-time retry after refresh
+ */
+async function fetchWithAuth(url, options = {}) {
+  let token = localStorage.getItem("access_token");
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+  const headers = {
+    ...options.headers,
+    Authorization: `Bearer ${token}`,
+  };
 
-  try {
-    const res = await fetch(EDGE_FN_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${session?.access_token ?? ""}`,
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-    const json = await res.json();
-    if (!res.ok)
-      throw new Error(json.error ?? `Edge Function error (${res.status})`);
-    return json;
-  } catch (err) {
-    if (err.name === "AbortError") {
-      throw new Error(
-        "Edge Function timed out after 30s. Check Supabase Edge Function logs at: https://supabase.com/dashboard/project/tksaiyrxdlefmjevurwy/functions/create-user/logs",
-      );
+  let res = await fetch(url, { ...options, headers });
+
+  // If 401, try to refresh once
+  if (res.status === 401) {
+    try {
+      token = await refreshAccessToken();
+      // Retry with new token
+      headers["Authorization"] = `Bearer ${token}`;
+      res = await fetch(url, { ...options, headers });
+    } catch (err) {
+      // Refresh failed, error already handled in refreshAccessToken
+      throw err;
     }
-    throw err;
-  } finally {
-    clearTimeout(timeoutId);
   }
+
+  return res;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -230,40 +246,29 @@ export const patientService = {
     return patientService.getPatientDetails(patient.health_id);
   },
 
-  /** Register a new patient. Calls Edge Function to create auth user, then inserts profile. */
+  /** Register a new patient (calls Django DRF). */
   registerPatient: async (formData, staffProfile) => {
-    const email = formData.email || `${Date.now()}@patient.local`;
-    const fullName = `${formData.firstName} ${formData.lastName}`.trim();
-
-    const result = await createUserViaEdge({
-      email,
-      full_name: fullName,
-      role: "patient",
-      hospital_id: staffProfile.hospital_id,
-      age: parseInt(formData.age, 10),
-      gender: formData.gender,
-      blood_group: formData.bloodGroup,
-      contact_number: formData.contact,
-      address: formData.address,
-      emergency_contact: formData.emergencyContact,
-      registered_by: staffProfile.id,
-    });
-
-    // 2. The Edge Function might not handle medical arrays: follow-up update
-    if (
-      result.user_id &&
-      (formData.allergies?.length > 0 || formData.chronicConditions?.length > 0)
-    ) {
-      await supabase
-        .from("profiles")
-        .update({
-          allergies: formData.allergies ?? [],
-          chronic_conditions: formData.chronicConditions ?? [],
-        })
-        .eq("id", result.user_id);
-    }
-
-    return result; // { user_id, health_id }
+    const res = await fetchWithAuth(
+      `${DRF_BASE_URL}/hospitals/register-patient/`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: formData.email || "",
+          full_name: `${formData.firstName} ${formData.lastName}`.trim(),
+          hospital_id: staffProfile.hospital_id,
+          age: parseInt(formData.age, 10),
+          gender: formData.gender,
+          blood_group: formData.bloodGroup,
+          contact_number: formData.contact,
+          address: formData.address,
+          emergency_contact: formData.emergencyContact,
+        }),
+      },
+    );
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || "Failed to register patient");
+    return json;
   },
 
   /** Update a patient's contact details and optional medical fields. */
@@ -437,13 +442,13 @@ export const staffService = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const hospitalService = {
-  /** Department list for this hospital — uses SECURITY DEFINER RPC to bypass RLS recursion. */
+  /** Department list for this hospital — uses Django DRF. */
   getDepartments: async (_hospitalId) => {
-    const { data, error } = await supabase.rpc("get_my_departments");
-    if (error) throw error;
+    const res = await fetchWithAuth(`${DRF_BASE_URL}/hospitals/departments/`);
+    if (!res.ok) throw new Error("Failed to fetch departments");
+    const data = await res.json();
 
-    const rows = data ?? [];
-    return rows.map((d) => ({
+    return data.map((d) => ({
       id: d.id,
       name: d.name,
       head: d.head_name ?? "—",
@@ -453,15 +458,28 @@ export const hospitalService = {
     }));
   },
 
-  /** Add a new department — uses SECURITY DEFINER RPC to bypass RLS recursion. */
+  /** Add a new department — uses Django DRF. */
   addDepartment: async (deptData, _hospitalId) => {
-    const { error } = await supabase.rpc("add_department", {
-      p_name: deptData.name,
-      p_head_name: deptData.head || null,
-      p_doctor_count: parseInt(deptData.doctors, 10) || 0,
-      p_staff_count: parseInt(deptData.staff, 10) || 0,
+    const res = await fetchWithAuth(`${DRF_BASE_URL}/hospitals/departments/`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        id: deptData.id,
+        name: deptData.name,
+        head_name: deptData.head || null,
+        doctor_count: parseInt(deptData.doctors, 10) || 0,
+        staff_count: parseInt(deptData.staff, 10) || 0,
+      }),
     });
-    if (error) throw error;
+    if (!res.ok) {
+      const json = await res.json();
+      throw new Error(
+        json.error || json.detail || "Failed to add department via DRF",
+      );
+    }
+    return res.json();
   },
 
   /** List doctors for this hospital. */
@@ -496,51 +514,14 @@ export const hospitalService = {
     }));
   },
 
-  /** Register a new doctor (calls Edge Function). */
-  registerDoctor: async (doctorData, hospitalId) => {
-    return createUserViaEdge({
-      email: doctorData.email,
-      full_name: doctorData.name,
-      role: "doctor",
-      hospital_id: hospitalId,
-      department_id: doctorData.dept || null,
-      specialization: doctorData.specialization || null,
-    });
-  },
+  /** List doctors for this hospital (calls Django DRF). */
+  getDoctors: async (_hospitalId) => {
+    const res = await fetchWithAuth(
+      `${DRF_BASE_URL}/hospitals/profiles/?role=doctor`,
+    );
+    if (!res.ok) throw new Error("Failed to fetch doctors");
+    const data = await res.json();
 
-  /** Update doctor's department and specialization. */
-  updateDoctor: async (doctorId, { department_id, specialization }) => {
-    const { error } = await supabase
-      .from("profiles")
-      .update({
-        department_id: department_id || null,
-        specialization: specialization || null,
-      })
-      .eq("id", doctorId);
-    if (error) throw error;
-  },
-
-  /** Update staff member's department. */
-  updateStaff: async (staffId, { department_id }) => {
-    const { error } = await supabase
-      .from("profiles")
-      .update({ department_id: department_id || null })
-      .eq("id", staffId);
-    if (error) throw error;
-  },
-
-  /** List staff for this hospital. */
-  getStaff: async (hospitalId) => {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select(
-        "id, full_name, department_id, specialization, join_date, is_active, email",
-      )
-      .eq("role", "staff")
-      .eq("hospital_id", hospitalId)
-      .order("join_date", { ascending: false });
-
-    if (error) throw error;
     const fmt = (d) =>
       d
         ? new Date(d).toLocaleDateString("en-IN", {
@@ -550,85 +531,152 @@ export const hospitalService = {
           })
         : "—";
 
-    return data.map((s) => ({
-      id: s.id,
-      name: s.full_name ?? "—",
-      dept: s.department_id ?? "—",
-      join: fmt(s.join_date),
-      active: s.is_active,
-      email: s.email,
-    }));
+    return data
+      .filter((d) => d.role === "doctor")
+      .map((d) => ({
+        id: d.id,
+        name: d.full_name ?? "—",
+        dept: d.department ?? "—",
+        spec: d.specialization ?? "—",
+        join: fmt(d.join_date),
+        active: d.is_active,
+        email: d.email,
+      }));
   },
 
-  /** Register a new staff member (calls Edge Function). */
-  registerStaff: async (staffData, hospitalId) => {
-    return createUserViaEdge({
-      email: staffData.email,
-      full_name: staffData.name,
-      role: "staff",
-      hospital_id: hospitalId,
-      department_id: staffData.dept || null,
-    });
-  },
-
-  /** Permanently remove a doctor/staff account.
-   *  Uses create-user Edge Function with action: 'delete'. */
-  deleteAccount: async (profileId) => {
-    const session = await getSession();
-    const res = await fetch(EDGE_FN_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${session?.access_token ?? ""}`,
+  /** Register a new doctor (calls Django DRF). */
+  registerDoctor: async (doctorData, _hospitalId) => {
+    const res = await fetchWithAuth(
+      `${DRF_BASE_URL}/hospitals/register-user/`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: doctorData.email,
+          full_name: doctorData.name,
+          role: "doctor",
+          department_id: doctorData.dept || null,
+          specialization: doctorData.specialization || null,
+        }),
       },
-      body: JSON.stringify({ action: "delete", userId: profileId }),
-    });
+    );
     const json = await res.json();
-    if (!res.ok) throw new Error(json.error ?? "Failed to delete account");
+    if (!res.ok) throw new Error(json.error || "Failed to register doctor");
     return json;
   },
 
-  /** Enable/Disable login for an account. */
-  setAccountStatus: async (profileId, isActive) => {
-    const { error } = await supabase
-      .from("profiles")
-      .update({ is_active: isActive })
-      .eq("id", profileId);
-    if (error) throw error;
+  /** Register a new staff member (calls Django DRF). */
+  registerStaff: async (staffData, _hospitalId) => {
+    const res = await fetchWithAuth(
+      `${DRF_BASE_URL}/hospitals/register-user/`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: staffData.email,
+          full_name: staffData.name,
+          role: "staff",
+          department_id: staffData.dept || null,
+        }),
+      },
+    );
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || "Failed to register staff");
+    return json;
   },
 
-  /** Stats card counts. */
-  getStats: async (hospitalId) => {
-    const [docRes, staffRes, activeDocRes, activeStaffRes] = await Promise.all([
-      supabase
-        .from("profiles")
-        .select("id", { count: "exact", head: true })
-        .eq("role", "doctor")
-        .eq("hospital_id", hospitalId),
-      supabase
-        .from("profiles")
-        .select("id", { count: "exact", head: true })
-        .eq("role", "staff")
-        .eq("hospital_id", hospitalId),
-      supabase
-        .from("profiles")
-        .select("id", { count: "exact", head: true })
-        .eq("role", "doctor")
-        .eq("hospital_id", hospitalId)
-        .eq("is_active", true),
-      supabase
-        .from("profiles")
-        .select("id", { count: "exact", head: true })
-        .eq("role", "staff")
-        .eq("hospital_id", hospitalId)
-        .eq("is_active", true),
-    ]);
+  /** Update doctor's department and specialization (calls Django). */
+  updateDoctor: async (doctorId, { department_id, specialization }) => {
+    const res = await fetchWithAuth(
+      `${DRF_BASE_URL}/hospitals/profiles/${doctorId}/`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          department: department_id || null, // Changed from department_id
+          specialization: specialization || null,
+        }),
+      },
+    );
+    if (!res.ok) throw new Error("Failed to update doctor");
+  },
 
-    return {
-      doctors: docRes.count ?? 0,
-      staff: staffRes.count ?? 0,
-      active: (activeDocRes.count ?? 0) + (activeStaffRes.count ?? 0),
-    };
+  /** Update staff member's department (calls Django). */
+  updateStaff: async (staffId, { department_id }) => {
+    const res = await fetchWithAuth(
+      `${DRF_BASE_URL}/hospitals/profiles/${staffId}/`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ department: department_id || null }), // Changed from department_id
+      },
+    );
+    if (!res.ok) throw new Error("Failed to update staff");
+  },
+
+  /** List staff for this hospital (calls Django DRF). */
+  getStaff: async (_hospitalId) => {
+    const res = await fetchWithAuth(
+      `${DRF_BASE_URL}/hospitals/profiles/?role=staff`,
+    );
+    if (!res.ok) throw new Error("Failed to fetch staff");
+    const data = await res.json();
+
+    const fmt = (d) =>
+      d
+        ? new Date(d).toLocaleDateString("en-IN", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+          })
+        : "—";
+
+    return data
+      .filter((s) => s.role === "staff")
+      .map((s) => ({
+        id: s.id,
+        name: s.full_name ?? "—",
+        dept: s.department ?? "—",
+        join: fmt(s.join_date),
+        active: s.is_active,
+        email: s.email,
+      }));
+  },
+
+  /** Permanently remove a doctor/staff account (calls Django DRF). */
+  deleteAccount: async (profileId) => {
+    const res = await fetchWithAuth(
+      `${DRF_BASE_URL}/hospitals/delete-user/${profileId}/`,
+      {
+        method: "DELETE",
+      },
+    );
+    if (!res.ok) {
+      const json = await res.json();
+      throw new Error(json.error || "Failed to delete account");
+    }
+  },
+
+  /** Enable/Disable login for an account (calls Django). */
+  setAccountStatus: async (profileId, isActive) => {
+    const res = await fetchWithAuth(
+      `${DRF_BASE_URL}/hospitals/profiles/${profileId}/`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_active: isActive }),
+      },
+    );
+    if (!res.ok) throw new Error("Failed to update account status");
+  },
+
+  /** Stats card counts (calls Django). */
+  getStats: async (_hospitalId) => {
+    const res = await fetchWithAuth(
+      `${DRF_BASE_URL}/hospitals/dashboard_stats/`,
+    );
+    if (!res.ok) throw new Error("Failed to fetch dashboard stats");
+    return res.json();
   },
 };
 
@@ -638,7 +686,7 @@ export const hospitalService = {
 
 export const adminService = {
   getHospitals: async () => {
-    const res = await fetch(`${DRF_BASE_URL}/hospitals/`);
+    const res = await fetchWithAuth(`${DRF_BASE_URL}/hospitals/`);
     if (!res.ok) throw new Error("Failed to fetch hospitals from DRF");
     return res.json();
   },
@@ -656,11 +704,14 @@ export const adminService = {
   },
 
   updateHospital: async (hospitalId, updateData) => {
-    const res = await fetch(`${DRF_BASE_URL}/hospitals/${hospitalId}/`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(updateData),
-    });
+    const res = await fetchWithAuth(
+      `${DRF_BASE_URL}/hospitals/${hospitalId}/`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updateData),
+      },
+    );
     const json = await res.json();
     if (!res.ok) {
       if (json.contact_email) throw new Error(json.contact_email);
@@ -672,7 +723,7 @@ export const adminService = {
   },
 
   getSystemStats: async () => {
-    const res = await fetch(`${DRF_BASE_URL}/hospitals/system_stats/`);
+    const res = await fetchWithAuth(`${DRF_BASE_URL}/hospitals/system_stats/`);
     if (!res.ok) throw new Error("Failed to fetch stats from DRF");
     return res.json();
   },

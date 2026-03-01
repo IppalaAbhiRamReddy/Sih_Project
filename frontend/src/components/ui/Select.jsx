@@ -28,9 +28,9 @@ export function Select({ label, value, onChange, options, placeholder = "Select 
                     type="button"
                     onClick={() => setIsOpen(!isOpen)}
                     className={`w-full h-11 px-4 flex items-center justify-between rounded-lg border transition-all text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 ${isOpen
-                            ? 'border-blue-500 ring-2 ring-blue-100 bg-white'
-                            : 'border-gray-200 bg-gray-50 hover:bg-white'
-                        } ${!value ? 'text-gray-500' : 'text-gray-900'}`}
+                        ? 'border-blue-500 ring-2 ring-blue-100 bg-white'
+                        : 'border-gray-200 bg-gray-50 hover:bg-white'
+                        } ${!value ? 'text-gray-500' : 'text-gray-900'} cursor-pointer`}
                 >
                     <span className="truncate">
                         {selectedOption ? selectedOption.label : placeholder}
@@ -49,7 +49,7 @@ export function Select({ label, value, onChange, options, placeholder = "Select 
                                     onChange(option.value);
                                     setIsOpen(false);
                                 }}
-                                className={`w-full px-4 py-2.5 text-left text-sm flex items-center justify-between hover:bg-gray-50 transition-colors ${value === option.value ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
+                                className={`w-full px-4 py-2.5 text-left text-sm flex items-center justify-between hover:bg-gray-50 transition-colors cursor-pointer ${value === option.value ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
                                     }`}
                             >
                                 {option.label}

@@ -18,9 +18,15 @@ node_modules/
 frontend/node_modules/
 backend/venv/
 venv/
-env/
+.venv/
 __pycache__/
 *.pyc
+*.pyo
+
+# Python testing/coverage
+.pytest_cache/
+.coverage
+htmlcov/
 
 # Database (Django)
 db.sqlite3
@@ -28,32 +34,26 @@ backend/db.sqlite3
 backend/media/
 backend/static/
 backend/staticfiles/
+local_settings.py
 
 # Build outputs
 dist/
-dist-ssr/
 build/
 frontend/dist/
 
 # IDEs
 .vscode/
 .idea/
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
 *.sw?
+*.bak
+*.tmp
 !.vscode/extensions.json
 
 # OS files
 .DS_Store
 Thumbs.db
 
-# Project-specific logs
+# Logs
 logs/
 *.log
 npm-debug.log*
-yarn-debug.log*
-pnpm-debug.log*
-lerna-debug.log*
-yarn-error.log*

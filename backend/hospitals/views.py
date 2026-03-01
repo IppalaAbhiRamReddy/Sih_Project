@@ -3,12 +3,14 @@ import secrets
 import string
 from django.contrib.auth.models import User
 from django.db import transaction
-from rest_framework import viewsets, status, views, mixins
+from rest_framework import viewsets, status, views, mixins, serializers
 from rest_framework.response import Response
 from rest_framework.decorators import action
-from .models import Hospital
-from .serializers import HospitalSerializer
+from .models import Hospital, Department
+from .serializers import HospitalSerializer, DepartmentSerializer
 from users.models import Profile
+from users.serializers import ProfileSerializer
+from rest_framework import permissions
 
 class HospitalViewSet(mixins.ListModelMixin, 
                      mixins.RetrieveModelMixin, 
@@ -61,6 +63,27 @@ class HospitalViewSet(mixins.ListModelMixin,
             'patients': patients
         })
 
+    @action(detail=False, methods=['get'])
+    def dashboard_stats(self, request):
+        try:
+            profile = request.user.profile
+            hospital = profile.hospital
+            if not hospital:
+                return Response({'error': 'No hospital associated with this user.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            doctors_count = Profile.objects.filter(hospital=hospital, role='doctor', is_active=True).count()
+            staff_count = Profile.objects.filter(hospital=hospital, role='staff', is_active=True).count()
+            # Active today should be sum of active doctors and staff
+            active_count = doctors_count + staff_count
+
+            return Response({
+                'doctors': doctors_count,
+                'staff': staff_count,
+                'active': active_count
+            })
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
 class HospitalRegistrationView(views.APIView):
     def post(self, request):
         data = request.data
@@ -111,5 +134,223 @@ class HospitalRegistrationView(views.APIView):
                     'message': 'Hospital and Admin account created successfully.'
                 }, status=status.HTTP_201_CREATED)
                 
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+class ProfileViewSet(viewsets.ModelViewSet):
+    serializer_class = ProfileSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        try:
+            profile = self.request.user.profile
+            if profile.role == 'admin':
+                return Profile.objects.all()
+            if profile.hospital:
+                qs = Profile.objects.filter(hospital=profile.hospital)
+                role = self.request.query_params.get('role')
+                if role:
+                    qs = qs.filter(role=role)
+                return qs
+        except:
+            return Profile.objects.none()
+
+    def perform_update(self, serializer):
+        with transaction.atomic():
+            # Get current instance before saving
+            instance = self.get_object()
+            old_status = instance.is_active
+            
+            # Save the new state
+            new_instance = serializer.save()
+            new_status = new_instance.is_active
+
+            # Restriction: Hospital Authority cannot re-enable accounts
+            # If status changes from False to True and user is not superuser/admin
+            profile = self.request.user.profile
+            if not old_status and new_status and profile.role != 'admin':
+                raise permissions.exceptions.PermissionDenied("You don't have access to activate the account")
+
+            # Sync is_active status to the associated Django User
+            if new_instance.user:
+                user = new_instance.user
+                if user.is_active != new_status:
+                    user.is_active = new_status
+                    user.save(update_fields=['is_active'])
+
+class DepartmentViewSet(viewsets.ModelViewSet):
+    serializer_class = DepartmentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        # Only show departments for the hospital associated with the logged-in user
+        try:
+            profile = self.request.user.profile
+            if profile.role == 'admin':
+                return Department.objects.all()
+            if profile.hospital:
+                return Department.objects.filter(hospital=profile.hospital)
+            return Department.objects.none()
+        except:
+            return Department.objects.none()
+
+    def perform_create(self, serializer):
+        # Automatically associate the department with the user's hospital
+        try:
+            profile = self.request.user.profile
+            if profile.hospital:
+                serializer.save(hospital=profile.hospital)
+            else:
+                raise serializers.ValidationError({"error": "User is not associated with any hospital."})
+        except Profile.DoesNotExist:
+            raise serializers.ValidationError({"error": "User profile not found."})
+
+class UserRegistrationView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        try:
+            admin_profile = request.user.profile
+            if admin_profile.role != 'hospital_admin':
+                 return Response({'error': 'Unauthorized. Only hospital admins can register users.'}, status=status.HTTP_403_FORBIDDEN)
+            
+            data = request.data
+            email = data.get('email')
+            name = data.get('full_name')
+            role = data.get('role') # 'doctor' or 'staff'
+            dept_id = data.get('department_id')
+            spec = data.get('specialization', '')
+
+            if not email or not name or not role:
+                return Response({'error': 'Email, name, and role are required.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            if User.objects.filter(username=email).exists():
+                return Response({'error': 'A user with this email already exists.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            with transaction.atomic():
+                # 1. Generate temp password
+                alphabet = string.ascii_letters + string.digits
+                temp_password = ''.join(secrets.choice(alphabet) for i in range(12))
+
+                # 2. Create Django User
+                user = User.objects.create_user(
+                    username=email,
+                    email=email,
+                    password=temp_password
+                )
+
+                # 3. Get Department
+                dept = None
+                if dept_id:
+                    dept = Department.objects.get(id=dept_id)
+
+                # 4. Create Profile
+                Profile.objects.create(
+                    id=uuid.uuid4(),
+                    user=user,
+                    hospital=admin_profile.hospital,
+                    department=dept,
+                    full_name=name,
+                    email=email,
+                    role=role,
+                    specialization=spec if role == 'doctor' else None,
+                    is_active=True
+                )
+
+                return Response({
+                    'message': f'{role.capitalize()} registered successfully.',
+                    'temp_password': temp_password,
+                    'email': email,
+                    'name': name,
+                    'role': role.capitalize()
+                }, status=status.HTTP_201_CREATED)
+
+        except Department.DoesNotExist:
+            return Response({'error': f'Department {dept_id} not found.'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+class DeleteUserView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request, profile_id):
+        try:
+            admin_profile = request.user.profile
+            if admin_profile.role != 'hospital_admin':
+                 return Response({'error': 'Unauthorized'}, status=status.HTTP_403_FORBIDDEN)
+            
+            profile = Profile.objects.get(id=profile_id, hospital=admin_profile.hospital)
+            user = profile.user
+            
+            with transaction.atomic():
+                # Soft delete: deactive the user account
+                if user:
+                    user.is_active = False
+                    user.save()
+                
+                profile.is_active = False
+                profile.save()
+            
+            return Response({'message': 'User deactivated successfully.'}, status=status.HTTP_200_OK)
+        except Profile.DoesNotExist:
+            return Response({'error': 'Profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+class PatientRegistrationView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        try:
+            creator_profile = request.user.profile
+            if creator_profile.role not in ['staff', 'hospital_admin', 'doctor']:
+                 return Response({'error': 'Unauthorized'}, status=status.HTTP_403_FORBIDDEN)
+            
+            data = request.data
+            email = data.get('email')
+            if not email:
+                email = f"p_{uuid.uuid4().hex[:8]}@patient.local"
+                
+            full_name = data.get('full_name')
+            hospital_id = data.get('hospital_id')
+            
+            # Simple unique HID generation logic
+            import random
+            health_id = f"HID-{random.randint(1000, 9999)}-{random.randint(1000, 9999)}"
+            
+            with transaction.atomic():
+                alphabet = string.ascii_letters + string.digits
+                temp_password = ''.join(secrets.choice(alphabet) for i in range(12))
+                
+                user = User.objects.create_user(
+                    username=email,
+                    email=email,
+                    password=temp_password
+                )
+                
+                profile = Profile.objects.create(
+                    id=uuid.uuid4(),
+                    user=user,
+                    role='patient',
+                    hospital_id=hospital_id or creator_profile.hospital.id,
+                    full_name=full_name,
+                    email=email,
+                    health_id=health_id,
+                    age=data.get('age'),
+                    gender=data.get('gender'),
+                    blood_group=data.get('blood_group'),
+                    contact_number=data.get('contact_number'),
+                    address=data.get('address'),
+                    emergency_contact=data.get('emergency_contact'),
+                    registered_by=creator_profile,
+                    is_active=True
+                )
+                
+                return Response({
+                    'user_id': str(profile.id),
+                    'health_id': health_id,
+                    'message': 'Patient registered successfully.'
+                }, status=status.HTTP_201_CREATED)
+
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
