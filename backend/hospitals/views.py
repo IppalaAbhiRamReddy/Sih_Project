@@ -342,13 +342,30 @@ class PatientRegistrationView(views.APIView):
                     contact_number=data.get('contact_number'),
                     address=data.get('address'),
                     emergency_contact=data.get('emergency_contact'),
+                    allergies=data.get('allergies', []),
+                    chronic_conditions=data.get('chronic_conditions', []),
                     registered_by=creator_profile,
                     is_active=True
                 )
                 
+                # 3. Create Vaccinations
+                vaccinations_data = data.get('vaccinations', [])
+                print(f"DEBUG: Vaccinations data received: {vaccinations_data}")
+                if isinstance(vaccinations_data, list):
+                    from clinical.models import Vaccination
+                    for v in vaccinations_data:
+                        vac = Vaccination.objects.create(
+                            patient=profile,
+                            vaccine_name=v.get('name'),
+                            administered_date=v.get('date') or None,
+                            next_due_date=v.get('nextDue') or None
+                        )
+                        print(f"DEBUG: Created Vaccination: {vac.vaccine_name} for patient {profile.full_name}, ID: {vac.id}")
+                
                 return Response({
                     'user_id': str(profile.id),
                     'health_id': health_id,
+                    'temp_password': temp_password,
                     'message': 'Patient registered successfully.'
                 }, status=status.HTTP_201_CREATED)
 

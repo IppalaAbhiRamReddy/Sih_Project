@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 from hospitals.models import Hospital
 from users.models import Profile
 import uuid
@@ -49,7 +50,7 @@ class Vaccination(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     patient = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name='vaccinations')
     vaccine_name = models.CharField(max_length=255)
-    administered_date = models.DateField(auto_now_add=True)
+    administered_date = models.DateField(default=timezone.now)
     next_due_date = models.DateField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

@@ -141,7 +141,7 @@ export const patientService = {
     const { data: patient, error: pErr } = await supabase
       .from("profiles")
       .select(
-        "id, full_name, health_id, age, gender, blood_group, contact_number, address, emergency_contact, allergies, chronic_conditions, created_at",
+        "id, full_name, health_id, age, gender, blood_group, contact_number, email, address, emergency_contact, allergies, chronic_conditions, created_at",
       )
       .eq("health_id", healthId)
       .maybeSingle();
@@ -156,7 +156,7 @@ export const patientService = {
       supabase
         .from("visits")
         .select(
-          "id, visit_date, next_visit_date, diagnosis, prescription_text, clinical_notes, doctor:profiles!visits_doctor_id_fkey(full_name, specialization, hospital:hospitals(name))",
+          "id, visit_date, next_visit_date, diagnosis, prescription_text, clinical_notes, doctor:profiles!doctor_id(full_name, specialization, hospital:hospitals(name))",
         )
         .eq("patient_id", pid)
         .order("visit_date", { ascending: false }),
@@ -164,7 +164,7 @@ export const patientService = {
       supabase
         .from("lab_reports")
         .select(
-          "id, report_name, file_url, report_date, status, hospital:hospitals(name)",
+          "id, report_name, file_url, report_date, status, hospital:hospitals!hospital_id(name)",
         )
         .eq("patient_id", pid)
         .order("report_date", { ascending: false }),
@@ -226,8 +226,10 @@ export const patientService = {
 
       vaccinations: vacRes.data.map((v) => ({
         name: v.vaccine_name,
-        date: fmt(v.administered_date),
-        nextDue: fmt(v.next_due_date),
+        date: v.administered_date || "", // Raw date for input fields
+        nextDue: v.next_due_date || "", // Raw date for input fields
+        displayDate: fmt(v.administered_date),
+        displayNextDue: fmt(v.next_due_date),
       })),
     };
   },
@@ -263,6 +265,21 @@ export const patientService = {
           contact_number: formData.contact,
           address: formData.address,
           emergency_contact: formData.emergencyContact,
+          allergies: formData.allergies
+            ? formData.allergies
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean)
+            : [],
+          chronic_conditions: formData.chronicConditions
+            ? formData.chronicConditions
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean)
+            : [],
+          vaccinations: (formData.vaccinations || []).filter((v) =>
+            v.name.trim(),
+          ),
         }),
       },
     );
@@ -305,10 +322,12 @@ export const patientService = {
     const rows = vaccinations
       .filter((v) => v.name && v.name.trim())
       .map((v) => ({
+        id: crypto.randomUUID(), // Manually generate UUID for primary key
         patient_id: patientUUID,
         vaccine_name: v.name.trim(),
         administered_date: v.date || null,
         next_due_date: v.nextDue || null,
+        created_at: new Date().toISOString(), // Fix: provide timestamp for Supabase
       }));
 
     if (rows.length === 0) return;
@@ -355,7 +374,7 @@ export const staffService = {
     const { data, error } = await supabase
       .from("profiles")
       .select(
-        "id, full_name, health_id, age, gender, contact_number, created_at, registered_by, allergies, chronic_conditions, email, address, emergency_contact, blood_group",
+        "id, full_name, health_id, age, gender, contact_number, created_at, registered_by_id, allergies, chronic_conditions, email, address, emergency_contact, blood_group",
       )
       .eq("role", "patient")
       .eq("hospital_id", hospitalId)
@@ -385,7 +404,7 @@ export const staffService = {
       emergencyContact: p.emergency_contact,
       bloodGroup: p.blood_group,
       date: fmt(p.created_at),
-      by: p.registered_by === staffId ? "You" : "Other Staff",
+      by: p.registered_by_id === staffId ? "You" : "Other Staff",
       allergies: p.allergies ?? [],
       chronicConditions: p.chronic_conditions ?? [],
     }));
@@ -425,7 +444,7 @@ export const staffService = {
         .from("profiles")
         .select("id", { count: "exact", head: true })
         .eq("role", "patient")
-        .eq("registered_by", staffId),
+        .eq("registered_by_id", staffId),
     ]);
 
     return {

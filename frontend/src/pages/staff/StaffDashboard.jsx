@@ -29,7 +29,9 @@ export default function StaffDashboard() {
     const [isEditOpen, setIsEditOpen] = useState(false);
     const [successState, setSuccessState] = useState({ isOpen: false, type: '', data: null });
     const [selectedPatient, setSelectedPatient] = useState(null);
+    const [viewingPatient, setViewingPatient] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
+    const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
     // Form States
     const [registerFormData, setRegisterFormData] = useState({
@@ -83,22 +85,11 @@ export default function StaffDashboard() {
         try {
             if (!profile?.id) throw new Error("Staff session expired. Please refresh.");
 
-            // Convert comma-separated strings to arrays for storage
-            const formWithArrays = {
+            // Registration now handles medical info and vaccinations in one call
+            const response = await patientService.registerPatient({
                 ...registerFormData,
-                allergies: registerFormData.allergies
-                    ? registerFormData.allergies.split(',').map(s => s.trim()).filter(Boolean)
-                    : [],
-                chronicConditions: registerFormData.chronicConditions
-                    ? registerFormData.chronicConditions.split(',').map(s => s.trim()).filter(Boolean)
-                    : [],
-            };
-            const response = await patientService.registerPatient(formWithArrays, profile);
-
-            // Save vaccinations if any were entered
-            if (registerVaccinations.length > 0 && response.user_id) {
-                await patientService.updateVaccinations(response.user_id, registerVaccinations);
-            }
+                vaccinations: registerVaccinations
+            }, profile);
 
             setIsRegisterOpen(false);
             setSuccessState({
@@ -153,6 +144,7 @@ export default function StaffDashboard() {
             setSelectedPatient(null);
             setEditFormData(null);
             setEditVaccinations([]);
+            setSearchQuery('');
             fetchDashboardData();
         } catch (err) {
             console.error('Update failed', err);
@@ -204,6 +196,24 @@ export default function StaffDashboard() {
         }
     };
 
+    const initiateDetails = async (patient) => {
+        setViewingPatient(patient);
+        setIsDetailsOpen(true);
+        try {
+            const details = await patientService.getPatientDetails(patient.id);
+            if (details) {
+                setViewingPatient(prev => ({
+                    ...prev,
+                    ...details,
+                    name: details.name || prev.name,
+                    contact: details.contact || prev.contact,
+                }));
+            }
+        } catch (err) {
+            console.error('Failed to fetch full details for view', err);
+        }
+    };
+
     if (loading) {
         return (
             <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -235,14 +245,14 @@ export default function StaffDashboard() {
                     <div className="space-y-3">
                         <button
                             onClick={() => setIsRegisterOpen(true)}
-                            className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-white bg-green-600 rounded-xl hover:bg-green-700 transition-colors shadow-sm"
+                            className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-white bg-green-600 rounded-xl hover:bg-green-700 transition-colors shadow-sm cursor-pointer"
                         >
                             <UserPlus className="w-5 h-5" />
                             Register New Patient
                         </button>
                         <button
                             onClick={() => setIsEditOpen(true)}
-                            className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+                            className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors cursor-pointer"
                         >
                             <Edit className="w-5 h-5 text-gray-500" />
                             Edit Patient Details
@@ -271,7 +281,7 @@ export default function StaffDashboard() {
                         <h4 className="font-bold text-green-900 text-sm mb-1">Your Scope</h4>
                         <p className="text-xs text-green-700 mb-3 block">Patient Onboarding Only</p>
                         <ul className="space-y-2">
-                            {['Register new patients', 'Generate Health IDs', 'Create login credentials', 'Update contact details'].map((item, i) => (
+                            {['Register new patients', 'Generate Health IDs', 'Create login credentials', 'Update details'].map((item, i) => (
                                 <li key={i} className="text-xs text-green-800 flex items-center gap-2">
                                     <CheckCircle className="w-3.5 h-3.5 text-green-600" />
                                     {item}
@@ -284,7 +294,7 @@ export default function StaffDashboard() {
                 <div className="p-4 border-t border-gray-100 mt-auto">
                     <button
                         onClick={handleLogout}
-                        className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-red-600 rounded-lg transition-colors"
+                        className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-red-600 rounded-lg transition-colors cursor-pointer"
                     >
                         <LogOut className="w-5 h-5" />
                         Logout
@@ -344,63 +354,26 @@ export default function StaffDashboard() {
                     </div>
                 </div>
 
-                {/* Guidelines Section */}
-                <div className="bg-blue-50 border border-blue-100 rounded-xl p-6 mb-8">
-                    <h3 className="font-bold text-blue-900 text-lg mb-4">Patient Registration Guidelines</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <div className="flex gap-3 mb-4">
-                                <CheckCircle className="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
-                                <div>
-                                    <h4 className="font-bold text-gray-900 text-sm">Unique Health ID</h4>
-                                    <p className="text-xs text-gray-600">Each patient receives a lifetime unique identifier</p>
-                                </div>
-                            </div>
-                            <div className="flex gap-3">
-                                <CheckCircle className="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
-                                <div>
-                                    <h4 className="font-bold text-gray-900 text-sm">Auto-Generated Login</h4>
-                                    <p className="text-xs text-gray-600">Credentials sent to patient automatically</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div>
-                            <div className="flex gap-3 mb-4">
-                                <CheckCircle className="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
-                                <div>
-                                    <h4 className="font-bold text-gray-900 text-sm">Verify Identity</h4>
-                                    <p className="text-xs text-gray-600">Confirm patient identity before registration</p>
-                                </div>
-                            </div>
-                            <div className="flex gap-3">
-                                <AlertTriangle className="w-5 h-5 text-orange-600 shrink-0 mt-0.5" />
-                                <div>
-                                    <h4 className="font-bold text-gray-900 text-sm">No Medical Access</h4>
-                                    <p className="text-xs text-gray-600">Staff cannot view/edit medical records</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+
 
                 {/* Recent Registrations Table */}
                 <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
                     <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white">
                         <div>
                             <h3 className="font-bold text-gray-900 text-lg">Recent Registrations</h3>
-                            <p className="text-sm text-gray-500">Patients you have registered (contact info only)</p>
+                            <p className="text-sm text-gray-500">Patients registrations by staff</p>
                         </div>
                         <div className="flex items-center gap-2">
                             <span className="inline-flex items-center justify-center rounded-md border text-xs font-medium w-fit whitespace-nowrap shrink-0 gap-1 bg-teal-50 text-teal-700 border-teal-200 px-3 py-1">
                                 <Users className="w-3 h-3 mr-1" />
-                                STAFF ACCESS
+                                Staff
                             </span>
                             <div className="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-medium">
-                                Registration Data Only
+                                Registration Data
                             </div>
                         </div>
                     </div>
-                    <div className="max-h-[400px] overflow-y-auto">
+                    <div className="max-h-[580px] overflow-y-auto">
                         {recentRegistrations.length === 0 ? (
                             <div className="p-12 text-center text-gray-400">
                                 <UserPlus className="w-10 h-10 mx-auto mb-3 opacity-30" />
@@ -422,7 +395,11 @@ export default function StaffDashboard() {
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
                                     {recentRegistrations.map((patient) => (
-                                        <tr key={patient.uuid} className="hover:bg-gray-50/50">
+                                        <tr
+                                            key={patient.uuid}
+                                            className="hover:bg-gray-50/50 cursor-pointer transition-colors"
+                                            onClick={() => initiateDetails(patient)}
+                                        >
                                             <td className="px-6 py-4 text-sm font-medium text-blue-600">{patient.id}</td>
                                             <td className="px-6 py-4">
                                                 <div className="flex flex-col">
@@ -679,11 +656,6 @@ export default function StaffDashboard() {
                             />
                         </div>
 
-                        <div className="flex items-center gap-2 text-xs text-orange-600 font-medium px-1">
-                            <AlertTriangle className="w-4 h-4" />
-                            You can only edit patients registered by you
-                        </div>
-
                         <div className="space-y-2 max-h-64 overflow-y-auto">
                             {searchQuery ? (
                                 recentRegistrations
@@ -696,7 +668,7 @@ export default function StaffDashboard() {
                                         <button
                                             key={patient.uuid}
                                             onClick={() => initiateEdit(patient)}
-                                            className="w-full text-left p-4 rounded-xl border bg-white border-gray-100 hover:border-green-200 hover:shadow-sm group transition-all"
+                                            className="w-full text-left p-4 rounded-xl border bg-white border-gray-100 hover:border-green-200 hover:shadow-sm group transition-all cursor-pointer"
                                         >
                                             <div className="flex justify-between items-start">
                                                 <div>
@@ -731,7 +703,7 @@ export default function StaffDashboard() {
                                 <button
                                     type="button"
                                     onClick={() => { setSelectedPatient(null); setEditFormData(null); setEditVaccinations([]); }}
-                                    className="text-xs font-bold text-green-700 hover:text-green-800 underline"
+                                    className="text-xs font-bold text-green-700 hover:text-green-800 underline cursor-pointer"
                                 >
                                     Change Patient
                                 </button>
@@ -909,6 +881,117 @@ export default function StaffDashboard() {
                 )}
             </Modal>
 
+            {/* Modal: Patient Details (Read-only) */}
+            <Modal
+                isOpen={isDetailsOpen}
+                onClose={() => { setIsDetailsOpen(false); setViewingPatient(null); }}
+                title="Patient Details"
+            >
+                {viewingPatient && (
+                    <div className="space-y-6">
+                        <div className="flex items-center justify-between bg-green-50 p-4 rounded-xl border border-green-100">
+                            <div>
+                                <h4 className="text-xl font-bold text-green-900">{viewingPatient.name}</h4>
+                                <p className="text-sm font-medium text-green-700">{viewingPatient.id}</p>
+                            </div>
+                            <div className="text-right">
+                                <p className="text-xs text-green-600 font-semibold uppercase tracking-wider">Member Since</p>
+                                <p className="text-sm font-bold text-green-800">{viewingPatient.date}</p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-6">
+                            <div className="space-y-1">
+                                <p className="text-xs font-semibold text-gray-400 uppercase">Age & Gender</p>
+                                <p className="text-gray-900 font-medium">{viewingPatient.age || '—'} years • {viewingPatient.gender}</p>
+                            </div>
+                            <div className="space-y-1">
+                                <p className="text-xs font-semibold text-gray-400 uppercase">Blood Group</p>
+                                <p className="text-gray-900 font-medium">{viewingPatient.bloodGroup || '—'}</p>
+                            </div>
+                            <div className="space-y-1">
+                                <p className="text-xs font-semibold text-gray-400 uppercase">Contact Number</p>
+                                <p className="text-gray-900 font-medium">{viewingPatient.contact}</p>
+                            </div>
+                            <div className="space-y-1">
+                                <p className="text-xs font-semibold text-gray-400 uppercase">Email Address</p>
+                                <p className="text-gray-900 font-medium break-all">{viewingPatient.email || '—'}</p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-1">
+                            <p className="text-xs font-semibold text-gray-400 uppercase">Address</p>
+                            <p className="text-gray-900 font-medium">{viewingPatient.address || '—'}</p>
+                        </div>
+
+                        <div className="space-y-1">
+                            <p className="text-xs font-semibold text-gray-400 uppercase">Emergency Contact</p>
+                            <div className="bg-gray-50 p-3 rounded-lg border border-gray-100 italic text-gray-700">
+                                {viewingPatient.emergencyContact || '—'}
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4 border-t border-gray-100 pt-4">
+                            <div className="space-y-2">
+                                <p className="text-xs font-semibold text-gray-400 uppercase">Allergies</p>
+                                <div className="flex flex-wrap gap-1">
+                                    {viewingPatient.allergies && viewingPatient.allergies.length > 0 ? (
+                                        viewingPatient.allergies.map((a, i) => (
+                                            <span key={i} className="px-2 py-1 rounded-md bg-red-50 text-red-700 text-xs font-bold border border-red-100">
+                                                {a}
+                                            </span>
+                                        ))
+                                    ) : (
+                                        <span className="text-xs text-gray-400">None recorded</span>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <p className="text-xs font-semibold text-gray-400 uppercase">Chronic Conditions</p>
+                                <div className="flex flex-wrap gap-1">
+                                    {viewingPatient.chronicConditions && viewingPatient.chronicConditions.length > 0 ? (
+                                        viewingPatient.chronicConditions.map((c, i) => (
+                                            <span key={i} className="px-2 py-1 rounded-md bg-orange-50 text-orange-700 text-xs font-bold border border-orange-100">
+                                                {c}
+                                            </span>
+                                        ))
+                                    ) : (
+                                        <span className="text-xs text-gray-400">None recorded</span>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="border-t border-gray-100 pt-4">
+                            <div className="flex items-center gap-2 mb-3">
+                                <Syringe className="w-4 h-4 text-green-600" />
+                                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Vaccination History</p>
+                            </div>
+                            {viewingPatient.vaccinations && viewingPatient.vaccinations.length > 0 ? (
+                                <div className="space-y-2">
+                                    {viewingPatient.vaccinations.map((vac, i) => (
+                                        <div key={i} className="bg-gray-50 border border-gray-100 rounded-lg p-3 flex justify-between items-center">
+                                            <div>
+                                                <p className="text-sm font-bold text-gray-900">{vac.name}</p>
+                                                <p className="text-xs text-gray-500">Administered: {vac.displayDate || '—'}</p>
+                                            </div>
+                                            {vac.nextDue && (
+                                                <div className="text-right">
+                                                    <p className="text-[10px] text-orange-600 font-bold uppercase">Next Due</p>
+                                                    <p className="text-xs font-semibold text-orange-700">{vac.displayNextDue}</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-xs text-gray-400 text-center py-2 italic">No vaccination records found</p>
+                            )}
+                        </div>
+                    </div>
+                )}
+            </Modal>
+
             {/* Modal: Success */}
             {successState.isOpen && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
@@ -942,7 +1025,7 @@ export default function StaffDashboard() {
                                     <div className="bg-yellow-50 border border-yellow-100 rounded-xl p-4 mb-3">
                                         <p className="text-sm text-yellow-700 font-medium mb-1">Temporary Password:</p>
                                         <p className="text-lg font-mono font-bold text-yellow-900">{successState.data.tempPassword}</p>
-                                        <p className="text-xs text-yellow-600 mt-1">Share this with the patient — they can reset it on first login.</p>
+                                        <p className="text-xs text-yellow-600 mt-1">Share this with the patient — they can change it using forgot password.</p>
                                     </div>
                                 )}
                             </>

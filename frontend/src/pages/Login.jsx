@@ -183,7 +183,7 @@ export default function Login() {
                                 type="submit"
                                 disabled={loading}
                                 className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400
-                                           text-white text-sm font-semibold rounded-xl transition-colors mt-2"
+                                           text-white text-sm font-semibold rounded-xl transition-colors mt-2 cursor-pointer"
                             >
                                 {loading ? 'Signing in…' : 'Sign In'}
                             </button>
