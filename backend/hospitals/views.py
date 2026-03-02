@@ -11,6 +11,10 @@ from .serializers import HospitalSerializer, DepartmentSerializer
 from users.models import Profile
 from users.serializers import ProfileSerializer
 from rest_framework import permissions
+from clinical.models import Visit, LabReport, Vaccination
+from clinical.serializers import (
+    DetailedVisitSerializer, LabReportSerializer, VaccinationSerializer
+)
 
 class HospitalViewSet(mixins.ListModelMixin, 
                      mixins.RetrieveModelMixin, 
@@ -154,6 +158,29 @@ class ProfileViewSet(viewsets.ModelViewSet):
                 return qs
         except:
             return Profile.objects.none()
+
+    @action(detail=False, methods=['get'])
+    def medical_history(self, request):
+        health_id = request.query_params.get('health_id')
+        if not health_id:
+            return Response({'error': 'health_id is required'}, status=400)
+            
+        try:
+            patient = Profile.objects.get(health_id=health_id, role='patient')
+            
+            # Fetch related clinical data
+            visits = Visit.objects.filter(patient=patient).order_by('-visit_date')
+            lab_reports = LabReport.objects.filter(patient=patient).order_by('-report_date')
+            vaccinations = Vaccination.objects.filter(patient=patient).order_by('-administered_date')
+            
+            return Response({
+                'profile': ProfileSerializer(patient).data,
+                'visits': DetailedVisitSerializer(visits, many=True).data,
+                'lab_reports': LabReportSerializer(lab_reports, many=True).data,
+                'vaccinations': VaccinationSerializer(vaccinations, many=True).data,
+            })
+        except Profile.DoesNotExist:
+            return Response({'error': 'Patient not found'}, status=404)
 
     def perform_update(self, serializer):
         with transaction.atomic():

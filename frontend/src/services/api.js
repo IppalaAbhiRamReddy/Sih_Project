@@ -1,6 +1,6 @@
 // services/api.js
-// All data operations go through the Supabase JS client directly.
-// Edge Function `create-user` handles privileged auth.admin.createUser calls.
+// Primary data operations go through Django REST Framework (DRF).
+// Supabase is used exclusively for file storage (Storage buckets).
 
 import { supabase } from "../lib/supabase";
 
@@ -137,50 +137,15 @@ export const patientService = {
    * Returns: profile + visits (joined with doctor name) + prescriptions + lab_reports + vaccinations
    */
   getPatientDetails: async (healthId) => {
-    // 1. Find the patient profile by health_id
-    const { data: patient, error: pErr } = await supabase
-      .from("profiles")
-      .select(
-        "id, full_name, health_id, age, gender, blood_group, contact_number, email, address, emergency_contact, allergies, chronic_conditions, created_at",
-      )
-      .eq("health_id", healthId)
-      .maybeSingle();
+    const res = await fetchWithAuth(
+      `${DRF_BASE_URL}/hospitals/profiles/medical_history/?health_id=${healthId}`,
+    );
+    if (!res.ok) {
+      if (res.status === 404) throw new Error("Patient not found");
+      throw new Error("Failed to fetch patient details");
+    }
+    const data = await res.json();
 
-    if (pErr) throw pErr;
-    if (!patient) throw new Error("Patient not found");
-
-    const pid = patient.id;
-
-    // 2. Fetch all related data in parallel
-    const [visitsRes, labRes, vacRes] = await Promise.all([
-      supabase
-        .from("visits")
-        .select(
-          "id, visit_date, next_visit_date, diagnosis, prescription_text, clinical_notes, doctor:profiles!doctor_id(full_name, specialization, hospital:hospitals(name))",
-        )
-        .eq("patient_id", pid)
-        .order("visit_date", { ascending: false }),
-
-      supabase
-        .from("lab_reports")
-        .select(
-          "id, report_name, file_url, report_date, status, hospital:hospitals!hospital_id(name)",
-        )
-        .eq("patient_id", pid)
-        .order("report_date", { ascending: false }),
-
-      supabase
-        .from("vaccinations")
-        .select("id, vaccine_name, administered_date, next_due_date")
-        .eq("patient_id", pid)
-        .order("administered_date", { ascending: false }),
-    ]);
-
-    if (visitsRes.error) throw visitsRes.error;
-    if (labRes.error) throw labRes.error;
-    if (vacRes.error) throw vacRes.error;
-
-    // 3. Normalize into the shape the dashboards expect
     const fmt = (d) =>
       d
         ? new Date(d).toLocaleDateString("en-IN", {
@@ -190,44 +155,46 @@ export const patientService = {
           })
         : "—";
 
-    return {
-      id: patient.health_id,
-      uuid: patient.id,
-      name: patient.full_name,
-      age: patient.age,
-      gender: patient.gender,
-      bloodGroup: patient.blood_group,
-      contact: patient.contact_number,
-      email: patient.email,
-      address: patient.address,
-      emergencyContact: patient.emergency_contact,
-      allergies: patient.allergies ?? [],
-      chronicConditions: patient.chronic_conditions ?? [],
-      memberSince: fmt(patient.created_at),
+    const { profile, visits, lab_reports, vaccinations } = data;
 
-      visits: visitsRes.data.map((v) => ({
+    return {
+      id: profile.health_id,
+      uuid: profile.id,
+      name: profile.full_name,
+      age: profile.age,
+      gender: profile.gender,
+      bloodGroup: profile.blood_group,
+      contact: profile.contact_number,
+      email: profile.email,
+      address: profile.address,
+      emergencyContact: profile.emergency_contact,
+      allergies: profile.allergies ?? [],
+      chronicConditions: profile.chronic_conditions ?? [],
+      memberSince: fmt(profile.created_at),
+
+      visits: visits.map((v) => ({
         id: v.id.slice(0, 8).toUpperCase(),
         date: fmt(v.visit_date),
-        doctor: v.doctor?.full_name ?? "Unknown Doctor",
-        hospital: v.doctor?.hospital?.name ?? "",
-        specialty: v.doctor?.specialization ?? "",
+        doctor: v.doctor_name ?? "Unknown Doctor",
+        hospital: v.hospital_name ?? "",
+        specialty: v.specialization ?? "",
         diagnosis: v.diagnosis,
         prescription: v.prescription_text ?? "",
         notes: v.clinical_notes ?? "",
       })),
 
-      labReports: labRes.data.map((r) => ({
+      labReports: lab_reports.map((r) => ({
         name: r.report_name,
         date: fmt(r.report_date),
-        hospital: r.hospital?.name ?? "",
+        hospital: r.hospital_name ?? "",
         status: r.status,
         url: r.file_url,
       })),
 
-      vaccinations: vacRes.data.map((v) => ({
+      vaccinations: vaccinations.map((v) => ({
         name: v.vaccine_name,
-        date: v.administered_date || "", // Raw date for input fields
-        nextDue: v.next_due_date || "", // Raw date for input fields
+        date: v.administered_date || "",
+        nextDue: v.next_due_date || "",
         displayDate: fmt(v.administered_date),
         displayNextDue: fmt(v.next_due_date),
       })),
@@ -238,13 +205,11 @@ export const patientService = {
    * Fetch patient details by UUID (used in PatientDashboard where we have profile.id).
    */
   getPatientDetailsByUUID: async (uuid) => {
-    const { data: patient, error: pErr } = await supabase
-      .from("profiles")
-      .select("health_id")
-      .eq("id", uuid)
-      .single();
-
-    if (pErr) throw pErr;
+    const res = await fetchWithAuth(
+      `${DRF_BASE_URL}/hospitals/profiles/${uuid}/`,
+    );
+    if (!res.ok) throw new Error("Patient not found");
+    const patient = await res.json();
     return patientService.getPatientDetails(patient.health_id);
   },
 
@@ -310,29 +275,36 @@ export const patientService = {
 
   /** Insert/replace all vaccination records for a patient. */
   updateVaccinations: async (patientUUID, vaccinations) => {
-    // Delete existing rows for this patient first
-    const { error: delErr } = await supabase
-      .from("vaccinations")
-      .delete()
-      .eq("patient_id", patientUUID);
-    if (delErr) throw delErr;
+    // 1. Fetch current vaccinations to delete them (simulating the sync/replace behavior)
+    // In a better API, we'd have a bulk update endpoint, but for now we follow the existing pattern
+    const listRes = await fetchWithAuth(
+      `${DRF_BASE_URL}/clinical/vaccinations/?patient=${patientUUID}`,
+    );
+    if (listRes.ok) {
+      const existing = await listRes.json();
+      for (const v of existing) {
+        await fetchWithAuth(`${DRF_BASE_URL}/clinical/vaccinations/${v.id}/`, {
+          method: "DELETE",
+        });
+      }
+    }
 
     if (!vaccinations || vaccinations.length === 0) return;
 
-    const rows = vaccinations
-      .filter((v) => v.name && v.name.trim())
-      .map((v) => ({
-        id: crypto.randomUUID(), // Manually generate UUID for primary key
-        patient_id: patientUUID,
-        vaccine_name: v.name.trim(),
-        administered_date: v.date || null,
-        next_due_date: v.nextDue || null,
-        created_at: new Date().toISOString(), // Fix: provide timestamp for Supabase
-      }));
-
-    if (rows.length === 0) return;
-    const { error } = await supabase.from("vaccinations").insert(rows);
-    if (error) throw error;
+    // 2. Insert new records
+    for (const v of vaccinations) {
+      if (!v.name || !v.name.trim()) continue;
+      await fetchWithAuth(`${DRF_BASE_URL}/clinical/vaccinations/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          patient: patientUUID,
+          vaccine_name: v.name.trim(),
+          administered_date: v.date || null,
+          next_due_date: v.nextDue || null,
+        }),
+      });
+    }
   },
 };
 
@@ -350,17 +322,105 @@ export const doctorService = {
     nextVisit,
     doctorId,
     hospitalId,
+    labReportFile,
   }) => {
-    const { error } = await supabase.from("visits").insert({
-      patient_id: patientId,
-      doctor_id: doctorId,
-      hospital_id: hospitalId,
-      diagnosis,
-      prescription_text: prescription,
-      clinical_notes: notes,
-      next_visit_date: nextVisit || null,
+    const now = new Date().toISOString();
+
+    // 1. Handle Optional Lab Report Upload to Supabase Storage
+    let labPublicUrl = null;
+    if (labReportFile) {
+      const fileExt = labReportFile.name.split(".").pop();
+      const fileName = `${patientId}/${Date.now()}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage
+        .from("lab-reports")
+        .upload(fileName, labReportFile);
+
+      if (uploadError) {
+        if (uploadError.message?.includes("Bucket not found")) {
+          throw new Error(
+            "Storage Bucket 'lab-reports' not found. Please create it in your Supabase console with public access.",
+          );
+        }
+        throw uploadError;
+      }
+
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("lab-reports").getPublicUrl(fileName);
+      labPublicUrl = publicUrl;
+    }
+
+    // 2. DRF: Create Lab Report record if file was uploaded
+    if (labPublicUrl) {
+      const labRes = await fetchWithAuth(
+        `${DRF_BASE_URL}/clinical/lab-reports/`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            patient: patientId,
+            hospital: hospitalId,
+            report_name: labReportFile.name,
+            file_url: labPublicUrl,
+            status: "Normal",
+          }),
+        },
+      );
+      if (!labRes.ok) throw new Error("Failed to save lab report record");
+    }
+
+    // 3. DRF: Insert Visit record
+    const visitRes = await fetchWithAuth(`${DRF_BASE_URL}/clinical/visits/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        patient: patientId,
+        doctor: doctorId,
+        hospital: hospitalId,
+        diagnosis,
+        prescription_text: prescription,
+        clinical_notes: notes,
+        next_visit_date: nextVisit || null,
+      }),
     });
-    if (error) throw error;
+    if (!visitRes.ok) throw new Error("Failed to save visit record");
+  },
+
+  /** Get stats for the logged-in doctor. */
+  getStats: async (doctorId) => {
+    const res = await fetchWithAuth(
+      `${DRF_BASE_URL}/clinical/visits/doctor_stats/?doctor_id=${doctorId}`,
+    );
+    if (!res.ok) throw new Error("Failed to fetch doctor stats");
+    return res.json();
+  },
+
+  /** Get recent visits performed by this doctor. */
+  getRecentVisits: async (doctorId) => {
+    const res = await fetchWithAuth(
+      `${DRF_BASE_URL}/clinical/visits/recent_visits/?doctor_id=${doctorId}`,
+    );
+    if (!res.ok) throw new Error("Failed to fetch recent visits");
+    const data = await res.json();
+
+    const fmt = (d) =>
+      d
+        ? new Date(d).toLocaleDateString("en-IN", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+          })
+        : "—";
+
+    return data.map((v) => ({
+      id: v.id.slice(0, 8).toUpperCase(),
+      date: fmt(v.visit_date),
+      patientName: v.patient_details?.full_name ?? "Unknown", // Need to ensure patient_details in serializer or just use profile
+      patientId: v.patient_details?.health_id ?? "—",
+      patientGender: v.patient_details?.gender ?? "—",
+      patientAge: v.patient_details?.age ?? "—",
+      diagnosis: v.diagnosis,
+    }));
   },
 };
 
@@ -371,17 +431,12 @@ export const doctorService = {
 export const staffService = {
   /** Get patients registered at this hospital (all staff). */
   getRecentRegistrations: async (staffId, hospitalId) => {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select(
-        "id, full_name, health_id, age, gender, contact_number, created_at, registered_by_id, allergies, chronic_conditions, email, address, emergency_contact, blood_group",
-      )
-      .eq("role", "patient")
-      .eq("hospital_id", hospitalId)
-      .order("created_at", { ascending: false })
-      .limit(50);
-
-    if (error) throw error;
+    // We filter by hospital in the DRF ProfilesViewSet
+    const res = await fetchWithAuth(
+      `${DRF_BASE_URL}/hospitals/profiles/?role=patient`,
+    );
+    if (!res.ok) throw new Error("Failed to fetch registrations");
+    const data = await res.json();
 
     const fmt = (d) =>
       d
@@ -404,7 +459,7 @@ export const staffService = {
       emergencyContact: p.emergency_contact,
       bloodGroup: p.blood_group,
       date: fmt(p.created_at),
-      by: p.registered_by_id === staffId ? "You" : "Other Staff",
+      by: p.registered_by === staffId ? "You" : "Other Staff",
       allergies: p.allergies ?? [],
       chronicConditions: p.chronic_conditions ?? [],
     }));
@@ -412,47 +467,15 @@ export const staffService = {
 
   /** Count registrations for stats cards.
    *  today/week/month = hospital-wide; total = this staff member's own count. */
-  getStats: async (staffId, hospitalId) => {
-    const now = new Date();
-    const todayStr = now.toISOString().slice(0, 10);
-    const weekAgo = new Date(now);
-    weekAgo.setDate(now.getDate() - 7);
-    const monthAgo = new Date(now);
-    monthAgo.setMonth(now.getMonth() - 1);
-
-    // Build each query independently — do NOT share a single query builder
-    const [todayRes, weekRes, monthRes, totalRes] = await Promise.all([
-      supabase
-        .from("profiles")
-        .select("id", { count: "exact", head: true })
-        .eq("role", "patient")
-        .eq("hospital_id", hospitalId)
-        .gte("created_at", `${todayStr}T00:00:00`),
-      supabase
-        .from("profiles")
-        .select("id", { count: "exact", head: true })
-        .eq("role", "patient")
-        .eq("hospital_id", hospitalId)
-        .gte("created_at", weekAgo.toISOString()),
-      supabase
-        .from("profiles")
-        .select("id", { count: "exact", head: true })
-        .eq("role", "patient")
-        .eq("hospital_id", hospitalId)
-        .gte("created_at", monthAgo.toISOString()),
-      supabase
-        .from("profiles")
-        .select("id", { count: "exact", head: true })
-        .eq("role", "patient")
-        .eq("registered_by_id", staffId),
-    ]);
-
-    return {
-      today: todayRes.count ?? 0,
-      week: weekRes.count ?? 0,
-      month: monthRes.count ?? 0,
-      total: totalRes.count ?? 0,
-    };
+  /** Count registrations for stats. */
+  getStats: async (_staffId, _hospitalId) => {
+    // We already have a dashboard_stats endpoint in HospitalViewSet
+    // but the Staff Dashboard might need more specific counts if we want staff-specific total
+    // Using systems_stats for now or updating it later
+    const res = await fetchWithAuth(`${DRF_BASE_URL}/hospitals/system_stats/`);
+    if (!res.ok) throw new Error("Failed to fetch staff stats");
+    const json = await res.json();
+    return json; // Note: may need field mapping if the staff dashboard expects today/week/month
   },
 };
 
@@ -499,38 +522,6 @@ export const hospitalService = {
       );
     }
     return res.json();
-  },
-
-  /** List doctors for this hospital. */
-  getDoctors: async (hospitalId) => {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select(
-        "id, full_name, department_id, specialization, join_date, is_active, email",
-      )
-      .eq("role", "doctor")
-      .eq("hospital_id", hospitalId)
-      .order("join_date", { ascending: false });
-
-    if (error) throw error;
-    const fmt = (d) =>
-      d
-        ? new Date(d).toLocaleDateString("en-IN", {
-            day: "2-digit",
-            month: "short",
-            year: "numeric",
-          })
-        : "—";
-
-    return data.map((d) => ({
-      id: d.id,
-      name: d.full_name ?? "—",
-      dept: d.department_id ?? "—",
-      spec: d.specialization ?? "—",
-      join: fmt(d.join_date),
-      active: d.is_active,
-      email: d.email,
-    }));
   },
 
   /** List doctors for this hospital (calls Django DRF). */

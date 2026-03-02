@@ -17,7 +17,10 @@ import {
     Calendar,
     Loader,
     Syringe,
-    User
+    User,
+    Users,
+    CheckSquare,
+    History
 } from 'lucide-react';
 import { patientService, doctorService } from '../../services/api';
 import { Button } from '../../components/ui/Button';
@@ -43,10 +46,41 @@ export default function DoctorDashboard() {
         prescription: '',
         notes: '',
         nextVisit: '',
+        reportFile: null,
     });
 
-    const handleSearch = async () => {
-        if (!searchValue.trim()) return;
+    const [stats, setStats] = useState({ today: 0, week: 0, month: 0, total: 0 });
+    const [recentVisits, setRecentVisits] = useState([]);
+    const [loadingDashboard, setLoadingDashboard] = useState(true);
+
+    React.useEffect(() => {
+        if (profile?.id) fetchDashboardData();
+    }, [profile]);
+
+    const fetchDashboardData = async () => {
+        try {
+            setLoadingDashboard(true);
+            const [statsData, visitsData] = await Promise.all([
+                doctorService.getStats(profile.id),
+                doctorService.getRecentVisits(profile.id)
+            ]);
+            setStats(statsData);
+            setRecentVisits(visitsData);
+        } catch (err) {
+            console.error('Failed to fetch dashboard data', err);
+        } finally {
+            setLoadingDashboard(false);
+        }
+    };
+
+    const handleSearch = async (forcedId = null) => {
+        const term = (typeof forcedId === 'string' ? forcedId : searchValue).trim();
+        if (!term) return;
+
+        if (forcedId && typeof forcedId === 'string') {
+            setSearchValue(forcedId);
+        }
+
         setSearching(true);
         setSearchError(null);
         setPatient(null);
@@ -58,7 +92,7 @@ export default function DoctorDashboard() {
 
         try {
             const data = await Promise.race([
-                patientService.getPatientDetails(searchValue.trim()),
+                patientService.getPatientDetails(term),
                 timeoutPromise
             ]);
             setPatient(data);
@@ -83,12 +117,14 @@ export default function DoctorDashboard() {
                 nextVisit: visitForm.nextVisit,
                 doctorId: profile.id,
                 hospitalId: profile.hospital_id,
+                labReportFile: visitForm.reportFile,
             });
             setIsVisitModalOpen(false);
-            setVisitForm({ diagnosis: '', prescription: '', notes: '', nextVisit: '' });
+            setVisitForm({ diagnosis: '', prescription: '', notes: '', nextVisit: '', reportFile: null });
             // Refresh patient data
             const updated = await patientService.getPatientDetails(searchValue.trim());
             setPatient(updated);
+            fetchDashboardData();
         } catch (err) {
             console.error('Failed to add visit', err);
             alert('Failed to add visit: ' + err.message);
@@ -117,24 +153,7 @@ export default function DoctorDashboard() {
                         </div>
                     </div>
 
-                    {/* Quick patient search */}
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        <input
-                            type="text"
-                            placeholder="Search Health ID..."
-                            value={searchValue}
-                            onChange={(e) => setSearchValue(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                            className="w-full pl-9 pr-10 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500"
-                        />
-                        <button
-                            onClick={handleSearch}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition"
-                        >
-                            <Eye className="w-4 h-4" />
-                        </button>
-                    </div>
+
                 </div>
 
                 <nav className="flex-1 px-4 py-4 space-y-4">
@@ -188,7 +207,7 @@ export default function DoctorDashboard() {
                 <div className="p-4 border-t border-gray-100 mt-auto">
                     <button
                         onClick={handleLogout}
-                        className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-red-600 rounded-lg transition-colors"
+                        className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-red-600 rounded-lg transition-colors cursor-pointer"
                     >
                         <LogOut className="w-5 h-5" />
                         Logout
@@ -205,10 +224,10 @@ export default function DoctorDashboard() {
                         <h2 className="text-lg font-bold text-gray-900">Patient Lookup</h2>
                         <span className="inline-flex items-center gap-1.5 bg-blue-50 border border-blue-200 text-blue-700 text-xs font-bold px-3 py-1 rounded-full">
                             <Shield className="w-3 h-3" />
-                            DOCTOR
+                            Doctor
                         </span>
                     </div>
-                    <div className="flex gap-4">
+                    <div className="flex flex-col sm:flex-row gap-4">
                         <div className="flex-1 relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                             <input
@@ -217,26 +236,13 @@ export default function DoctorDashboard() {
                                 value={searchValue}
                                 onChange={(e) => setSearchValue(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                                className="w-full
-        h-12
-        pl-9
-        pr-4
-        bg-gray-50
-        border
-        border-gray-200
-        rounded-lg
-        text-sm
-        focus:outline-none
-        focus:ring-2
-        focus:ring-blue-100
-        focus:border-blue-500
-        transition"
+                                className="w-full h-12 pl-10 pr-4 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition"
                             />
                         </div>
                         <Button
                             onClick={handleSearch}
                             disabled={searching}
-                            className="bg-blue-100 hover:bg-blue-200 px-1 h-12 flex items-center gap-2"
+                            className="sm:w-auto px-6 h-12 flex items-center justify-center gap-2 whitespace-nowrap"
                         >
                             {searching ? (
                                 <Loader className="w-4 h-4 animate-spin" />
@@ -255,17 +261,119 @@ export default function DoctorDashboard() {
                     )}
                 </div>
 
-                {/* Empty State */}
+                {/* Dashboard Home View (Stats & Recent Activity) */}
                 {!patient && !searching && !searchError && (
-                    <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-16 text-center">
-                        <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6">
-                            <Search className="w-10 h-10 text-blue-400" />
-                        </div>
-                        <h3 className="text-xl font-bold text-gray-900 mb-2">Search for a Patient</h3>
-                        <p className="text-gray-500 max-w-md mx-auto">
-                            Enter a patient's Health ID to view their complete medical history, visit records, prescriptions, and lab reports.
-                        </p>
-                    </div>
+                    <>
+                        {loadingDashboard ? (
+                            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-16 text-center">
+                                <Loader className="w-10 h-10 text-blue-400 animate-spin mx-auto mb-4" />
+                                <p className="text-gray-500">Loading dashboard data…</p>
+                            </div>
+                        ) : (
+                            <>
+                                {/* Stats Grid */}
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                                    <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
+                                        <div>
+                                            <p className="text-sm font-medium text-gray-500 mb-1">Today's Visits</p>
+                                            <h3 className="text-3xl font-bold text-gray-900">{stats.today}</h3>
+                                        </div>
+                                        <div className="p-3 bg-blue-50 rounded-lg">
+                                            <Activity className="w-6 h-6 text-blue-600" />
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
+                                        <div>
+                                            <p className="text-sm font-medium text-gray-500 mb-1">This Week</p>
+                                            <h3 className="text-3xl font-bold text-gray-900">{stats.week}</h3>
+                                        </div>
+                                        <div className="p-3 bg-indigo-50 rounded-lg">
+                                            <Calendar className="w-6 h-6 text-indigo-600" />
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
+                                        <div>
+                                            <p className="text-sm font-medium text-gray-500 mb-1">This Month</p>
+                                            <h3 className="text-3xl font-bold text-gray-900">{stats.month}</h3>
+                                        </div>
+                                        <div className="p-3 bg-purple-50 rounded-lg">
+                                            <CheckSquare className="w-6 h-6 text-purple-600" />
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
+                                        <div>
+                                            <p className="text-sm font-medium text-gray-500 mb-1">Total Consultations</p>
+                                            <h3 className="text-3xl font-bold text-gray-900">{stats.total}</h3>
+                                        </div>
+                                        <div className="p-3 bg-blue-50 rounded-lg">
+                                            <Users className="w-6 h-6 text-blue-600" />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Recent Activity Table */}
+                                <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+                                    <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+                                        <div>
+                                            <h3 className="font-bold text-gray-900 text-lg">Recent Consultations</h3>
+                                            <p className="text-sm text-gray-500">Your most recent patient interactions</p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <History className="w-4 h-4 text-gray-400" />
+                                            <span className="text-xs font-medium text-gray-500 italic">History View</span>
+                                        </div>
+                                    </div>
+                                    <div className="max-h-[500px] overflow-y-auto">
+                                        {recentVisits.length === 0 ? (
+                                            <div className="p-16 text-center text-gray-400">
+                                                <Activity className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                                                <p className="font-medium">No recent consultations found</p>
+                                                <p className="text-sm mt-1">Search for a patient to start your first visit record</p>
+                                            </div>
+                                        ) : (
+                                            <table className="w-full">
+                                                <thead className="bg-gray-50 text-left sticky top-0 z-10">
+                                                    <tr>
+                                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Patient Name</th>
+                                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Health ID</th>
+                                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Diagnosis</th>
+                                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Visit Date</th>
+                                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase text-right">Action</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100">
+                                                    {recentVisits.map((visit) => (
+                                                        <tr key={visit.id} className="hover:bg-gray-50/50 transition-colors">
+                                                            <td className="px-6 py-4">
+                                                                <div className="flex flex-col">
+                                                                    <span className="text-sm text-gray-900 font-bold">{visit.patientName}</span>
+                                                                    <span className="text-[10px] text-gray-500 uppercase">{visit.patientGender} • {visit.patientAge} Yrs</span>
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-6 py-4 text-sm font-medium text-blue-600">{visit.patientId}</td>
+                                                            <td className="px-6 py-4 text-sm text-gray-600 truncate max-w-[200px]">{visit.diagnosis}</td>
+                                                            <td className="px-6 py-4 text-sm text-gray-500">{visit.date}</td>
+                                                            <td className="px-6 py-4 text-right">
+                                                                <button
+                                                                    onClick={() => handleSearch(visit.patientId)}
+                                                                    className="text-xs font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100 transition-all cursor-pointer"
+                                                                >
+                                                                    View Details
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        )}
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                    </>
                 )}
 
                 {/* Searching spinner */}
@@ -295,29 +403,46 @@ export default function DoctorDashboard() {
                                             <span className="text-gray-300">•</span>
                                             <span className="text-sm text-gray-500">{patient.age} yrs • {patient.gender} • {patient.bloodGroup}</span>
                                         </div>
-                                        <p className="text-sm text-gray-400 mt-1">{patient.contact}</p>
+                                        <div className="flex flex-col gap-2 mt-2">
+                                            <p className="text-sm text-gray-400">
+                                                <span className="font-semibold text-gray-500 mr-2">Contact:</span>
+                                                {patient.contact} • {patient.email || 'No Email'}
+                                            </p>
+                                            <p className="text-sm text-gray-400">
+                                                <span className="font-semibold text-gray-500 mr-2">Address:</span>
+                                                {patient.address || '—'}
+                                            </p>
+                                            <p className="text-sm text-red-400">
+                                                <span className="font-semibold text-red-500 mr-2">Emergency Contact:</span>
+                                                {patient.emergencyContact || '—'}
+                                            </p>
+                                        </div>
                                     </div>
                                 </div>
 
-                                <div className="flex flex-col items-end gap-2">
+                                <div className="flex flex-col items-end gap-3 shrink-0">
                                     <Button
                                         onClick={() => setIsVisitModalOpen(true)}
-                                        className="bg-blue-600 hover:bg-blue-700 flex items-center gap-2"
+                                        className="bg-blue-600 hover:bg-blue-700 flex items-center justify-center gap-2 px-6 w-auto whitespace-nowrap shadow-sm"
                                     >
                                         <Plus className="w-4 h-4" />
                                         Add New Visit
                                     </Button>
                                     <button
-                                        onClick={() => setPatient(null)}
-                                        className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1"
+                                        onClick={() => {
+                                            setPatient(null);
+                                            setSearchValue('');
+                                        }}
+                                        className="text-xs font-semibold text-gray-400 hover:text-red-500 flex items-center gap-2 transition-all px-4 py-2 border border-gray-200 hover:border-red-100 hover:bg-red-50 rounded-lg cursor-pointer"
                                     >
-                                        <X className="w-3 h-3" />Clear
+                                        <X className="w-4 h-4" />
+                                        Clear Results
                                     </button>
                                 </div>
                             </div>
 
                             {/* Alerts / Profile Summary */}
-                            <div className="mt-4 flex flex-wrap gap-3">
+                            <div className="mt-6 pt-6 border-t border-gray-100 flex flex-wrap gap-3">
                                 <div className="bg-red-50 border border-red-100 rounded-lg px-3 py-2 flex items-center gap-2">
                                     <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
                                     <span className="text-sm text-red-700">
@@ -466,28 +591,32 @@ export default function DoctorDashboard() {
                                     <table className="w-full">
                                         <thead className="bg-gray-50">
                                             <tr>
-                                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Vaccine</th>
-                                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Administered</th>
-                                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Next Due</th>
-                                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Status</th>
+                                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase cursor-pointer">Vaccine</th>
+                                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase cursor-pointer">Administered</th>
+                                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase cursor-pointer">Next Due</th>
+                                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase cursor-pointer">Status</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-100">
                                             {patient.vaccinations.map((v, i) => {
-                                                const isDue = v.nextDue !== '—' && new Date(v.nextDue) < new Date();
+                                                const isDue = v.nextDue && new Date(v.nextDue) < new Date();
                                                 return (
                                                     <tr key={i} className="hover:bg-gray-50/50">
                                                         <td className="px-6 py-4 text-sm font-medium text-gray-900">{v.name}</td>
-                                                        <td className="px-6 py-4 text-sm text-gray-600">{v.date}</td>
+                                                        <td className="px-6 py-4 text-sm text-gray-600">{v.displayDate}</td>
                                                         <td className="px-6 py-4 text-sm text-gray-600">
-                                                            {v.nextDue}
+                                                            {v.displayNextDue}
                                                             {isDue && (
                                                                 <span className="ml-2 text-[10px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded">OVERDUE</span>
                                                             )}
                                                         </td>
                                                         <td className="px-6 py-4">
                                                             <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${isDue ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
-                                                                <CheckCircle className="w-3 h-3" />
+                                                                {isDue ? (
+                                                                    <AlertTriangle className="w-3 h-3" />
+                                                                ) : (
+                                                                    <CheckCircle className="w-3 h-3" />
+                                                                )}
                                                                 {isDue ? 'Due' : 'Completed'}
                                                             </span>
                                                         </td>
@@ -595,6 +724,17 @@ export default function DoctorDashboard() {
                             className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 bg-gray-50"
                             value={visitForm.nextVisit}
                             onChange={(e) => setVisitForm({ ...visitForm, nextVisit: e.target.value })}
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5 font-bold">
+                            <FileText className="w-4 h-4 inline mr-1" />Optional Lab Report
+                        </label>
+                        <input
+                            type="file"
+                            className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer border border-gray-100 rounded-lg p-2 bg-gray-50/50"
+                            onChange={(e) => setVisitForm({ ...visitForm, reportFile: e.target.files[0] })}
                         />
                     </div>
 

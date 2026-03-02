@@ -210,7 +210,7 @@ export default function PatientDashboard() {
                 <div className="p-4 border-t border-gray-100 mt-auto">
                     <button
                         onClick={handleLogout}
-                        className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-red-600 rounded-lg transition-colors"
+                        className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-red-600 rounded-lg transition-colors cursor-pointer"
                     >
                         <LogOut className="w-5 h-5" />
                         Logout
@@ -237,7 +237,7 @@ export default function PatientDashboard() {
                             </div>
                             <div className="flex items-center gap-2 bg-white/10 border border-white/20 rounded-full px-3 py-1.5">
                                 <Shield className="w-3.5 h-3.5" />
-                                <span className="text-xs font-bold tracking-wider">PATIENT ACCESS</span>
+                                <span className="text-xs font-bold tracking-wider">Patient</span>
                             </div>
                         </div>
                     </div>
@@ -386,11 +386,13 @@ export default function PatientDashboard() {
                                             <td className="px-6 py-4">
                                                 <a
                                                     href={r.url}
+                                                    download={r.name}
                                                     target="_blank"
                                                     rel="noreferrer"
-                                                    className="text-teal-600 hover:underline text-sm flex items-center gap-1"
+                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 text-teal-700 hover:bg-teal-100 rounded-lg text-xs font-bold transition-colors group"
                                                 >
-                                                    <Download className="w-3.5 h-3.5" />View Report
+                                                    <Download className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                                                    Download
                                                 </a>
                                             </td>
                                         </tr>

@@ -1,59 +1,53 @@
-# Binaries
-bin/supabase.exe
-bin/supabase.tar.gz
+# General
+.DS_Store
+Thumbs.db
+*.bak
+*.tmp
+*.log
+logs/
+
+# Development Tools
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.sw?
+.env
+.env.local
+.env.*.local
 
 # Supabase
 .supabase/
 supabase/.temp/
+bin/
 
-# Environment Variables
-.env
-.env.local
-.env.*.local
+# Backend (Python/Django)
 backend/.env
-frontend/.env
-
-# Dependencies
-node_modules/
-frontend/node_modules/
+backend/db.sqlite3
+backend/media/
+backend/static/
+backend/staticfiles/
 backend/venv/
 venv/
 .venv/
 __pycache__/
 *.pyc
 *.pyo
-
-# Python testing/coverage
 .pytest_cache/
 .coverage
 htmlcov/
-
-# Database (Django)
 db.sqlite3
-backend/db.sqlite3
-backend/media/
-backend/static/
-backend/staticfiles/
+db.sqlite3-journal
 local_settings.py
 
-# Build outputs
+# Frontend (Node/Vite)
+frontend/.env
+frontend/node_modules/
+frontend/dist/
+node_modules/
 dist/
 build/
-frontend/dist/
-
-# IDEs
-.vscode/
-.idea/
-*.sw?
-*.bak
-*.tmp
-!.vscode/extensions.json
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Logs
-logs/
-*.log
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.eslintcache
+.vite/
