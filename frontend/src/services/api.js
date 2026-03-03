@@ -705,6 +705,24 @@ export const hospitalService = {
     if (!res.ok) throw new Error("Failed to fetch dashboard stats");
     return res.json();
   },
+
+  /** AI Analytics: Department Load Forecast (ARIMA). */
+  getAnalyticsForecast: async (timeRange) => {
+    const res = await fetchWithAuth(
+      `${DRF_BASE_URL}/analytics/trends/forecast/?range=${timeRange}`,
+    );
+    if (!res.ok) throw new Error("Failed to fetch forecast data");
+    return res.json();
+  },
+
+  /** AI Analytics: Disease Trend Distribution (KNN). */
+  getAnalyticsDiseaseDistribution: async (timeRange, dept) => {
+    const res = await fetchWithAuth(
+      `${DRF_BASE_URL}/analytics/trends/disease_distribution/?range=${timeRange}&dept=${dept}`,
+    );
+    if (!res.ok) throw new Error("Failed to fetch disease distribution");
+    return res.json();
+  },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

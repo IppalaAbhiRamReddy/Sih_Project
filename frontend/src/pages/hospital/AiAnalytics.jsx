@@ -39,13 +39,9 @@ export default function AiAnalytics() {
         { value: '90days', label: 'Last 3 Months' },
     ];
 
-    const deptOptions = [
-        { value: 'all', label: 'All Departments' },
-        { value: 'cardiology', label: 'Cardiology' },
-        { value: 'general', label: 'General Medicine' },
-        { value: 'orthopedics', label: 'Orthopedics' },
-        { value: 'ent', label: 'ENT' },
-    ];
+    const [deptOptions, setDeptOptions] = useState([
+        { value: 'all', label: 'All Departments' }
+    ]);
 
     React.useEffect(() => {
         fetchAnalytics();
@@ -54,7 +50,17 @@ export default function AiAnalytics() {
     const fetchAnalytics = async () => {
         try {
             setLoading(true);
-            // In a real app, departmentStatus might also come from an API
+
+            // Fetch departments if not already loaded
+            if (deptOptions.length === 1) {
+                const user = JSON.parse(localStorage.getItem('user'));
+                const depts = await hospitalService.getDepartments(user?.hospital_id);
+                setDeptOptions([
+                    { value: 'all', label: 'All Departments' },
+                    ...depts.map(d => ({ value: d.id, label: d.name }))
+                ]);
+            }
+
             const [forecast, diseases] = await Promise.all([
                 hospitalService.getAnalyticsForecast(timeRange),
                 hospitalService.getAnalyticsDiseaseDistribution(timeRange, selectedDept)
@@ -63,8 +69,6 @@ export default function AiAnalytics() {
             setLoadForecastData(forecast);
             setDiseaseData(diseases);
 
-            // Mocking status update for now as it wasn't in the original plan but good to keep dynamic if possible
-            // Re-using the static status for visual consistency unless backend provides it
             setDepartmentStatus([
                 { name: 'Cardiology', status: 'High', percent: 88, color: 'text-red-500', dot: '🔴' },
                 { name: 'General Medicine', status: 'High', percent: 85, color: 'text-red-500', dot: '🔴' },
@@ -119,8 +123,8 @@ export default function AiAnalytics() {
                         </div>
                     </div>
 
-                    <div className="h-80 w-full">
-                        <ResponsiveContainer width="100%" height="100%">
+                    <div className="h-80 w-full relative">
+                        <ResponsiveContainer width="99%" height="100%">
                             <LineChart data={loadForecastData}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
                                 <XAxis
@@ -139,10 +143,21 @@ export default function AiAnalytics() {
                                 />
                                 <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #E5E7EB', boxShadow: 'none' }} />
                                 <Legend verticalAlign="bottom" height={36} iconType="circle" />
-                                <Line type="monotone" dataKey="card" stroke="#60A5FA" strokeWidth={2} dot={{ r: 4 }} name="Cardiology" />
-                                <Line type="monotone" dataKey="gen" stroke="#34D399" strokeWidth={2} dot={{ r: 4 }} name="General Medicine" />
-                                <Line type="monotone" dataKey="orth" stroke="#FBBF24" strokeWidth={2} dot={{ r: 4 }} name="Orthopedics" />
-                                <Line type="monotone" dataKey="ent" stroke="#A78BFA" strokeWidth={2} dot={{ r: 4 }} name="ENT" />
+                                {loadForecastData?.length > 0 && deptOptions.length > 1 ?
+                                    deptOptions.filter(d => d.value !== 'all').map((dept, idx) => (
+                                        <Line
+                                            key={dept.value}
+                                            type="monotone"
+                                            dataKey={dept.value}
+                                            stroke={['#60A5FA', '#34D399', '#FBBF24', '#A78BFA', '#F87171'][idx % 5]}
+                                            strokeWidth={2}
+                                            dot={{ r: 4 }}
+                                            name={dept.label}
+                                        />
+                                    )) : (
+                                        <Line type="monotone" dataKey="none" stroke="transparent" name="No predicted data available" />
+                                    )
+                                }
                             </LineChart>
                         </ResponsiveContainer>
                     </div>
@@ -208,8 +223,8 @@ export default function AiAnalytics() {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
                         <div className="flex flex-col items-center">
-                            <div className="h-64 w-full">
-                                <ResponsiveContainer width="100%" height="100%">
+                            <div className="h-64 w-full relative">
+                                <ResponsiveContainer width="99%" height="100%">
                                     <PieChart>
                                         <Pie
                                             data={diseaseData}
