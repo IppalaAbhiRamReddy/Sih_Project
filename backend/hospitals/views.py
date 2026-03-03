@@ -162,23 +162,36 @@ class ProfileViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def medical_history(self, request):
         health_id = request.query_params.get('health_id')
+        include = request.query_params.get('include', 'profile,visits,lab_reports,vaccinations').split(',')
+        
         if not health_id:
             return Response({'error': 'health_id is required'}, status=400)
             
         try:
             patient = Profile.objects.get(health_id=health_id, role='patient')
+            response_data = {}
+
+            if 'profile' in include:
+                response_data['profile'] = ProfileSerializer(patient).data
             
-            # Fetch related clinical data
-            visits = Visit.objects.filter(patient=patient).order_by('-visit_date')
-            lab_reports = LabReport.objects.filter(patient=patient).order_by('-report_date')
-            vaccinations = Vaccination.objects.filter(patient=patient).order_by('-administered_date')
+            if 'visits' in include:
+                visits = Visit.objects.filter(patient=patient)\
+                    .select_related('doctor', 'hospital', 'patient')\
+                    .order_by('-visit_date')
+                response_data['visits'] = DetailedVisitSerializer(visits, many=True).data
             
-            return Response({
-                'profile': ProfileSerializer(patient).data,
-                'visits': DetailedVisitSerializer(visits, many=True).data,
-                'lab_reports': LabReportSerializer(lab_reports, many=True).data,
-                'vaccinations': VaccinationSerializer(vaccinations, many=True).data,
-            })
+            if 'lab_reports' in include:
+                lab_reports = LabReport.objects.filter(patient=patient)\
+                    .select_related('hospital')\
+                    .order_by('-report_date')
+                response_data['lab_reports'] = LabReportSerializer(lab_reports, many=True).data
+            
+            if 'vaccinations' in include:
+                vaccinations = Vaccination.objects.filter(patient=patient)\
+                    .order_by('-administered_date')
+                response_data['vaccinations'] = VaccinationSerializer(vaccinations, many=True).data
+            
+            return Response(response_data)
         except Profile.DoesNotExist:
             return Response({'error': 'Patient not found'}, status=404)
 
@@ -377,17 +390,19 @@ class PatientRegistrationView(views.APIView):
                 
                 # 3. Create Vaccinations
                 vaccinations_data = data.get('vaccinations', [])
-                print(f"DEBUG: Vaccinations data received: {vaccinations_data}")
-                if isinstance(vaccinations_data, list):
+                if isinstance(vaccinations_data, list) and vaccinations_data:
                     from clinical.models import Vaccination
-                    for v in vaccinations_data:
-                        vac = Vaccination.objects.create(
+                    vaccinations_to_create = [
+                        Vaccination(
                             patient=profile,
                             vaccine_name=v.get('name'),
                             administered_date=v.get('date') or None,
                             next_due_date=v.get('nextDue') or None
                         )
-                        print(f"DEBUG: Created Vaccination: {vac.vaccine_name} for patient {profile.full_name}, ID: {vac.id}")
+                        for v in vaccinations_data if v.get('name')
+                    ]
+                    if vaccinations_to_create:
+                        Vaccination.objects.bulk_create(vaccinations_to_create)
                 
                 return Response({
                     'user_id': str(profile.id),

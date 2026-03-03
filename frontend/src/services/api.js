@@ -136,9 +136,12 @@ export const patientService = {
    * Fetch full patient details by health_id string.
    * Returns: profile + visits (joined with doctor name) + prescriptions + lab_reports + vaccinations
    */
-  getPatientDetails: async (healthId) => {
+  getPatientDetails: async (
+    healthId,
+    include = "profile,visits,lab_reports,vaccinations",
+  ) => {
     const res = await fetchWithAuth(
-      `${DRF_BASE_URL}/hospitals/profiles/medical_history/?health_id=${healthId}`,
+      `${DRF_BASE_URL}/hospitals/profiles/medical_history/?health_id=${healthId}&include=${include}`,
     );
     if (!res.ok) {
       if (res.status === 404) throw new Error("Patient not found");
@@ -155,24 +158,29 @@ export const patientService = {
           })
         : "—";
 
-    const { profile, visits, lab_reports, vaccinations } = data;
+    const result = {};
 
-    return {
-      id: profile.health_id,
-      uuid: profile.id,
-      name: profile.full_name,
-      age: profile.age,
-      gender: profile.gender,
-      bloodGroup: profile.blood_group,
-      contact: profile.contact_number,
-      email: profile.email,
-      address: profile.address,
-      emergencyContact: profile.emergency_contact,
-      allergies: profile.allergies ?? [],
-      chronicConditions: profile.chronic_conditions ?? [],
-      memberSince: fmt(profile.created_at),
+    if (data.profile) {
+      const p = data.profile;
+      result.profile = {
+        id: p.health_id,
+        uuid: p.id,
+        name: p.full_name,
+        age: p.age,
+        gender: p.gender,
+        bloodGroup: p.blood_group,
+        contact: p.contact_number,
+        email: p.email,
+        address: p.address,
+        emergencyContact: p.emergency_contact,
+        allergies: p.allergies ?? [],
+        chronicConditions: p.chronic_conditions ?? [],
+        memberSince: fmt(p.created_at),
+      };
+    }
 
-      visits: visits.map((v) => ({
+    if (data.visits) {
+      result.visits = data.visits.map((v) => ({
         id: v.id.slice(0, 8).toUpperCase(),
         date: fmt(v.visit_date),
         doctor: v.doctor_name ?? "Unknown Doctor",
@@ -181,36 +189,45 @@ export const patientService = {
         diagnosis: v.diagnosis,
         prescription: v.prescription_text ?? "",
         notes: v.clinical_notes ?? "",
-      })),
+      }));
+    }
 
-      labReports: lab_reports.map((r) => ({
+    if (data.lab_reports) {
+      result.labReports = data.lab_reports.map((r) => ({
         name: r.report_name,
         date: fmt(r.report_date),
         hospital: r.hospital_name ?? "",
         status: r.status,
         url: r.file_url,
-      })),
+      }));
+    }
 
-      vaccinations: vaccinations.map((v) => ({
+    if (data.vaccinations) {
+      result.vaccinations = data.vaccinations.map((v) => ({
         name: v.vaccine_name,
         date: v.administered_date || "",
         nextDue: v.next_due_date || "",
         displayDate: fmt(v.administered_date),
         displayNextDue: fmt(v.next_due_date),
-      })),
-    };
+      }));
+    }
+
+    return result;
   },
 
   /**
    * Fetch patient details by UUID (used in PatientDashboard where we have profile.id).
    */
-  getPatientDetailsByUUID: async (uuid) => {
+  getPatientDetailsByUUID: async (
+    uuid,
+    include = "profile,visits,lab_reports,vaccinations",
+  ) => {
     const res = await fetchWithAuth(
       `${DRF_BASE_URL}/hospitals/profiles/${uuid}/`,
     );
     if (!res.ok) throw new Error("Patient not found");
     const patient = await res.json();
-    return patientService.getPatientDetails(patient.health_id);
+    return patientService.getPatientDetails(patient.health_id, include);
   },
 
   /** Register a new patient (calls Django DRF). */

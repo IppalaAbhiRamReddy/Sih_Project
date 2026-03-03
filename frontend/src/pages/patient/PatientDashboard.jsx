@@ -22,34 +22,252 @@ import {
 import { patientService } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 
+const VisitHistory = React.memo(({ visits, isPrescriptionView = false }) => {
+    const data = isPrescriptionView ? (visits ?? []).filter(v => v.prescription) : visits;
+
+    if (!data || data.length === 0) {
+        return (
+            <div className="bg-white border border-gray-200 rounded-xl p-12 text-center text-gray-400 shadow-sm transition-all duration-300 animate-in fade-in zoom-in-95">
+                {isPrescriptionView ? <Pill className="w-10 h-10 mx-auto mb-3 opacity-30" /> : <Activity className="w-10 h-10 mx-auto mb-3 opacity-30" />}
+                <p className="font-medium">No {isPrescriptionView ? 'prescriptions' : 'visits'} on record yet</p>
+                {isPrescriptionView && <p className="text-sm mt-1">Prescriptions are added by your doctor during visits</p>}
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {data.map((v, idx) => (
+                <div key={idx} className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-all duration-300">
+                    <div className="flex justify-between items-start mb-4">
+                        <div className="flex items-center gap-3">
+                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isPrescriptionView ? 'bg-indigo-50' : 'bg-teal-50'}`}>
+                                {isPrescriptionView ? <Pill className={`w-5 h-5 text-indigo-600`} /> : <Activity className={`w-5 h-5 text-teal-600`} />}
+                            </div>
+                            <div>
+                                <p className="font-bold text-gray-900">Visit on {v.date}</p>
+                                <p className="text-xs text-gray-500">Dr. {v.doctor} {v.specialty && `• ${v.specialty}`}</p>
+                                {v.hospital && <p className="text-xs text-gray-400">{v.hospital}</p>}
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-gray-400 border border-gray-200 px-2 py-0.5 rounded tracking-wider">#{v.id}</span>
+                        </div>
+                    </div>
+                    {isPrescriptionView ? (
+                        <div className="bg-indigo-50 border border-indigo-100 rounded-lg px-4 py-3">
+                            <p className="text-xs font-semibold text-indigo-500 uppercase tracking-wide mb-1">Prescription Notes</p>
+                            <p className="text-sm text-gray-800 whitespace-pre-wrap">{v.prescription}</p>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <p className="text-xs text-gray-500 uppercase font-semibold mb-1">Diagnosis</p>
+                                <p className="text-sm font-medium text-gray-800">{v.diagnosis}</p>
+                            </div>
+                            {v.prescription && (
+                                <div>
+                                    <p className="text-xs text-gray-500 uppercase font-semibold mb-1">Prescription</p>
+                                    <p className="text-sm text-gray-700 truncate">{v.prescription}</p>
+                                </div>
+                            )}
+                            {v.notes && (
+                                <div>
+                                    <p className="text-xs text-gray-500 uppercase font-semibold mb-1">Doctor's Notes</p>
+                                    <p className="text-sm text-gray-700 italic">{v.notes}</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                    {!isPrescriptionView && (
+                        <div className="mt-4 pt-3 border-t border-gray-100 flex items-center gap-1.5">
+                            <Eye className="w-3.5 h-3.5 text-gray-400" />
+                            <span className="text-xs text-gray-400">View-only — records are immutable for your protection</span>
+                        </div>
+                    )}
+                </div>
+            ))}
+        </div>
+    );
+});
+
+const LabReports = React.memo(({ labReports }) => {
+    if (!labReports || labReports.length === 0) {
+        return (
+            <div className="bg-white border border-gray-200 rounded-xl p-12 text-center text-gray-400 shadow-sm animate-in fade-in zoom-in-95">
+                <FileText className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                <p>No lab reports on record yet.</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <table className="w-full">
+                <thead className="bg-gray-50">
+                    <tr>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Report Name</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Hospital</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Status</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">File</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                    {labReports.map((r, i) => (
+                        <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                            <td className="px-6 py-4 text-sm font-medium text-gray-900">{r.name}</td>
+                            <td className="px-6 py-4 text-sm text-gray-500">{r.date}</td>
+                            <td className="px-6 py-4 text-sm text-gray-500">{r.hospital}</td>
+                            <td className="px-6 py-4">
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${r.status === 'Normal' ? 'bg-green-50 text-green-700' : r.status === 'Abnormal' ? 'bg-red-50 text-red-700' : 'bg-yellow-50 text-yellow-700'}`}>
+                                    {r.status}
+                                </span>
+                            </td>
+                            <td className="px-6 py-4">
+                                <a
+                                    href={r.url}
+                                    download={r.name}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 text-teal-700 hover:bg-teal-100 rounded-lg text-xs font-bold transition-colors group"
+                                >
+                                    <Download className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                                    Download
+                                </a>
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+});
+
+const Vaccinations = React.memo(({ vaccinations }) => {
+    if (!vaccinations || vaccinations.length === 0) {
+        return (
+            <div className="bg-white border border-gray-200 rounded-xl p-12 text-center text-gray-400 shadow-sm animate-in fade-in zoom-in-95">
+                <Syringe className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                <p>No vaccination records found.</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <table className="w-full">
+                <thead className="bg-gray-50">
+                    <tr>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Vaccine</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Administered</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Next Due</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Status</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                    {vaccinations.map((v, i) => {
+                        const isDue = v.nextDue !== '—' && new Date(v.nextDue) < new Date();
+                        return (
+                            <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                                <td className="px-6 py-4 text-sm font-medium text-gray-900">{v.name}</td>
+                                <td className="px-6 py-4 text-sm text-gray-600">{v.date}</td>
+                                <td className="px-6 py-4 text-sm text-gray-600">
+                                    {v.nextDue}
+                                    {isDue && (
+                                        <span className="ml-2 text-[10px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded animate-pulse">OVERDUE</span>
+                                    )}
+                                </td>
+                                <td className="px-6 py-4">
+                                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${isDue ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+                                        <CheckCircle className="w-3 h-3" />
+                                        {isDue ? 'Due' : 'Completed'}
+                                    </span>
+                                </td>
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </table>
+        </div>
+    );
+});
+
 export default function PatientDashboard() {
     const navigate = useNavigate();
     const { profile, signOut } = useAuth();
 
     const [patient, setPatient] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [tabLoading, setTabLoading] = useState(false);
     const [error, setError] = useState(null);
     const [activeTab, setActiveTab] = useState('visits');
+    const [loadedTabs, setLoadedTabs] = useState(new Set());
 
     useEffect(() => {
-        if (profile?.id) fetchPatientData();
+        if (profile?.id) {
+            // Initial fetch: just Profile + default tab (Visits)
+            fetchPatientInitialData();
+        }
     }, [profile]);
 
-    const fetchPatientData = async () => {
+    useEffect(() => {
+        if (patient?.id && !loadedTabs.has(activeTab)) {
+            fetchTabData(activeTab);
+        }
+    }, [activeTab, patient?.id]);
+
+    const fetchPatientInitialData = async () => {
         try {
-            console.log('[DEBUG] fetchPatientData: Starting fetch for UUID:', profile.id);
             setLoading(true);
             setError(null);
-            console.time('fetchPatientDetails');
-            const data = await patientService.getPatientDetailsByUUID(profile.id);
-            console.timeEnd('fetchPatientDetails');
-            console.log('[DEBUG] fetchPatientData: Success', data);
-            setPatient(data);
+
+            // Only fetch profile and visits initially to speed up TTI
+            const data = await patientService.getPatientDetailsByUUID(profile.id, 'profile,visits');
+
+            setPatient(data.profile);
+            if (data.visits) {
+                setPatient(prev => ({ ...prev, visits: data.visits }));
+                setLoadedTabs(new Set(['visits']));
+            }
         } catch (err) {
-            console.error('[DEBUG] fetchPatientData: Failed', err);
+            console.error('[DEBUG] fetchPatientInitialData: Failed', err);
             setError(err.message);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const fetchTabData = async (tab) => {
+        if (!patient?.id) return;
+
+        // Map tab IDs to API include keys
+        const tabMap = {
+            'visits': 'visits',
+            'prescriptions': 'visits', // Prescriptions are derived from visits
+            'labs': 'lab_reports',
+            'vaccinations': 'vaccinations'
+        };
+
+        const includeKey = tabMap[tab];
+        if (!includeKey) return;
+
+        try {
+            setTabLoading(true);
+            const data = await patientService.getPatientDetailsByUUID(profile.id, includeKey);
+
+            setPatient(prev => ({
+                ...prev,
+                visits: includeKey === 'visits' ? data.visits : prev.visits,
+                labReports: includeKey === 'lab_reports' ? data.labReports : prev.labReports,
+                vaccinations: includeKey === 'vaccinations' ? data.vaccinations : prev.vaccinations,
+            }));
+
+            setLoadedTabs(prev => new Set([...prev, tab]));
+        } catch (err) {
+            console.error(`[DEBUG] fetchTabData (${tab}): Failed`, err);
+        } finally {
+            setTabLoading(false);
         }
     };
 
@@ -77,7 +295,7 @@ export default function PatientDashboard() {
                     <h3 className="text-lg font-bold text-gray-900 mb-2">Could not load records</h3>
                     <p className="text-sm text-gray-500 mb-6">{error}</p>
                     <button
-                        onClick={fetchPatientData}
+                        onClick={fetchPatientInitialData}
                         className="bg-teal-600 hover:bg-teal-700 text-white px-6 py-2 rounded-lg font-medium text-sm"
                     >
                         Try Again
@@ -244,210 +462,39 @@ export default function PatientDashboard() {
                 )}
 
                 {/* Tabs */}
-                <div className="flex gap-1 bg-gray-100 p-1 rounded-xl mb-6 w-fit">
-                    {[
-                        { id: 'visits', label: 'Visit History', icon: Activity },
-                        { id: 'prescriptions', label: 'Prescriptions', icon: Pill },
-                        { id: 'labs', label: 'Lab Reports', icon: FileText },
-                        { id: 'vaccinations', label: 'Vaccinations', icon: Syringe },
-                    ].map(({ id, label, icon: Icon }) => (
-                        <button
-                            key={id}
-                            onClick={() => setActiveTab(id)}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                        >
-                            <Icon className="w-4 h-4" />
-                            {label}
-                        </button>
-                    ))}
+                <div className="flex items-center gap-4 mb-6">
+                    <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
+                        {[
+                            { id: 'visits', label: 'Visit History', icon: Activity },
+                            { id: 'prescriptions', label: 'Prescriptions', icon: Pill },
+                            { id: 'labs', label: 'Lab Reports', icon: FileText },
+                            { id: 'vaccinations', label: 'Vaccinations', icon: Syringe },
+                        ].map(({ id, label, icon: Icon }) => (
+                            <button
+                                key={id}
+                                onClick={() => setActiveTab(id)}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                            >
+                                <Icon className="w-4 h-4" />
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                    {tabLoading && (
+                        <div className="flex items-center gap-2 text-teal-600 animate-pulse">
+                            <Loader className="w-4 h-4 animate-spin" />
+                            <span className="text-xs font-medium">Updating...</span>
+                        </div>
+                    )}
                 </div>
 
-                {/* Visit History */}
-                {activeTab === 'visits' && (
-                    <div className="space-y-4">
-                        {patient?.visits?.length === 0 ? (
-                            <div className="bg-white border border-gray-200 rounded-xl p-12 text-center text-gray-400 shadow-sm">
-                                <Activity className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                                <p className="font-medium">No visits on record yet</p>
-                            </div>
-                        ) : (
-                            patient?.visits?.map((visit, idx) => (
-                                <div key={idx} className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow">
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-lg bg-teal-50 flex items-center justify-center">
-                                                <Activity className="w-5 h-5 text-teal-600" />
-                                            </div>
-                                            <div>
-                                                <p className="font-bold text-gray-900">Visit on {visit.date}</p>
-                                                <p className="text-xs text-gray-500">Dr. {visit.doctor} • {visit.specialty}</p>
-                                                {visit.hospital && <p className="text-xs text-gray-400">{visit.hospital}</p>}
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[10px] font-bold text-gray-400 border border-gray-200 px-2 py-0.5 rounded tracking-wider">#{visit.id}</span>
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        <div>
-                                            <p className="text-xs text-gray-500 uppercase font-semibold mb-1">Diagnosis</p>
-                                            <p className="text-sm font-medium text-gray-800">{visit.diagnosis}</p>
-                                        </div>
-                                        {visit.prescription && (
-                                            <div>
-                                                <p className="text-xs text-gray-500 uppercase font-semibold mb-1">Prescription</p>
-                                                <p className="text-sm text-gray-700">{visit.prescription}</p>
-                                            </div>
-                                        )}
-                                        {visit.notes && (
-                                            <div>
-                                                <p className="text-xs text-gray-500 uppercase font-semibold mb-1">Doctor's Notes</p>
-                                                <p className="text-sm text-gray-700 italic">{visit.notes}</p>
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className="mt-4 pt-3 border-t border-gray-100 flex items-center gap-1.5">
-                                        <Eye className="w-3.5 h-3.5 text-gray-400" />
-                                        <span className="text-xs text-gray-400">View-only — records are immutable for your protection</span>
-                                    </div>
-                                </div>
-                            ))
-                        )}
-                    </div>
-                )}
-
-                {/* Prescriptions — sourced from visit records */}
-                {activeTab === 'prescriptions' && (() => {
-                    const visitPrescriptions = (patient?.visits ?? []).filter(v => v.prescription);
-                    return (
-                        <div className="space-y-4">
-                            {visitPrescriptions.length === 0 ? (
-                                <div className="bg-white border border-gray-200 rounded-xl p-12 text-center text-gray-400 shadow-sm">
-                                    <Pill className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                                    <p className="font-medium">No prescriptions on record yet</p>
-                                    <p className="text-sm mt-1">Prescriptions are added by your doctor during visits</p>
-                                </div>
-                            ) : (
-                                visitPrescriptions.map((v, i) => (
-                                    <div key={i} className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow">
-                                        <div className="flex items-start justify-between mb-3">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center">
-                                                    <Pill className="w-4 h-4 text-indigo-600" />
-                                                </div>
-                                                <div>
-                                                    <p className="font-semibold text-gray-900 text-sm">Visit on {v.date}</p>
-                                                    <p className="text-xs text-gray-500">Dr. {v.doctor}{v.specialty ? ` · ${v.specialty}` : ''}</p>
-                                                </div>
-                                            </div>
-                                            <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">{v.hospital || ''}</span>
-                                        </div>
-                                        <div className="bg-indigo-50 border border-indigo-100 rounded-lg px-4 py-3">
-                                            <p className="text-xs font-semibold text-indigo-500 uppercase tracking-wide mb-1">Prescription Notes</p>
-                                            <p className="text-sm text-gray-800 whitespace-pre-wrap">{v.prescription}</p>
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    );
-                })()}
-
-                {/* Lab Reports */}
-                {activeTab === 'labs' && (
-                    <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-                        {patient?.labReports?.length === 0 ? (
-                            <div className="p-12 text-center text-gray-400">
-                                <FileText className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                                <p>No lab reports on record yet.</p>
-                            </div>
-                        ) : (
-                            <table className="w-full">
-                                <thead className="bg-gray-50">
-                                    <tr>
-                                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Report Name</th>
-                                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
-                                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Hospital</th>
-                                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Status</th>
-                                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">File</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100">
-                                    {patient.labReports.map((r, i) => (
-                                        <tr key={i} className="hover:bg-gray-50/50">
-                                            <td className="px-6 py-4 text-sm font-medium text-gray-900">{r.name}</td>
-                                            <td className="px-6 py-4 text-sm text-gray-500">{r.date}</td>
-                                            <td className="px-6 py-4 text-sm text-gray-500">{r.hospital}</td>
-                                            <td className="px-6 py-4">
-                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${r.status === 'Normal' ? 'bg-green-50 text-green-700' : r.status === 'Abnormal' ? 'bg-red-50 text-red-700' : 'bg-yellow-50 text-yellow-700'}`}>
-                                                    {r.status}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <a
-                                                    href={r.url}
-                                                    download={r.name}
-                                                    target="_blank"
-                                                    rel="noreferrer"
-                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 text-teal-700 hover:bg-teal-100 rounded-lg text-xs font-bold transition-colors group"
-                                                >
-                                                    <Download className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
-                                                    Download
-                                                </a>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        )}
-                    </div>
-                )}
-
-                {/* Vaccinations */}
-                {activeTab === 'vaccinations' && (
-                    <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-                        {patient?.vaccinations?.length === 0 ? (
-                            <div className="p-12 text-center text-gray-400">
-                                <Syringe className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                                <p>No vaccination records found.</p>
-                            </div>
-                        ) : (
-                            <table className="w-full">
-                                <thead className="bg-gray-50">
-                                    <tr>
-                                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Vaccine</th>
-                                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Administered</th>
-                                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Next Due</th>
-                                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100">
-                                    {patient.vaccinations.map((v, i) => {
-                                        const isDue = v.nextDue !== '—' && new Date(v.nextDue) < new Date();
-                                        return (
-                                            <tr key={i} className="hover:bg-gray-50/50">
-                                                <td className="px-6 py-4 text-sm font-medium text-gray-900">{v.name}</td>
-                                                <td className="px-6 py-4 text-sm text-gray-600">{v.date}</td>
-                                                <td className="px-6 py-4 text-sm text-gray-600">
-                                                    {v.nextDue}
-                                                    {isDue && (
-                                                        <span className="ml-2 text-[10px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded">OVERDUE</span>
-                                                    )}
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${isDue ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
-                                                        <CheckCircle className="w-3 h-3" />
-                                                        {isDue ? 'Due' : 'Completed'}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        )}
-                    </div>
-                )}
+                {/* Tab Content */}
+                <div className="min-h-[400px]">
+                    {activeTab === 'visits' && <VisitHistory visits={patient?.visits} />}
+                    {activeTab === 'prescriptions' && <VisitHistory visits={patient?.visits} isPrescriptionView />}
+                    {activeTab === 'labs' && <LabReports labReports={patient?.labReports} />}
+                    {activeTab === 'vaccinations' && <Vaccinations vaccinations={patient?.vaccinations} />}
+                </div>
             </main>
         </div>
     );
