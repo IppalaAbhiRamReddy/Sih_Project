@@ -43,7 +43,7 @@ class ARIMAForecaster:
         try:
             # Simple ARIMA model (5,1,0) - tuning can be done later
             # Using order=(5,1,0) as a starting point for daily data
-            model = ARIMA(data['count'], order=(5, 1, 0))
+            model = ARIMA(data['count'], order=(7, 1, 1))
             model_fit = model.fit()
             
             # Forecast
@@ -112,19 +112,106 @@ class ARIMAForecaster:
 
             try:
                 # Use a more robust order for stationary daily data
-                model = ARIMA(daily_counts['count'], order=(1, 0, 1)) 
+                model = ARIMA(daily_counts['count'], order=(7, 1, 1)) 
                 model_fit = model.fit()
                 forecast_res = model_fit.forecast(steps=steps)
                 
                 for i, val in enumerate(forecast_res):
                     # Ensure it looks like the historical mean (demo fallback)
                     final_val = val if val > (daily_counts['count'].mean() * 0.5) else daily_counts['count'].mean()
-                    results[i][dept.id] = max(1, int(round(float(final_val) + np.random.normal(0, 1))))
+                    results[i][dept.id] = max(1, int(round(float(final_val))))
             except Exception as e:
                 print(f"ARIMA error for {dept.name}: {e}")
-                # Fallback to simple mean + random noise
+                # Fallback to simple mean
                 avg = daily_counts['count'].mean() or 10 # Default to 10 if no data for demo
                 for i in range(steps):
-                    results[i][dept.id] = max(1, int(round(avg + np.random.normal(0, 2))))
+                    results[i][dept.id] = max(1, int(round(avg)))
 
         return results
+
+    def get_department_load_status(self):
+        """
+        Calculate current load status for each department based on tomorrow's forecast vs capacity.
+        """
+        departments = Department.objects.filter(hospital_id=self.hospital_id)
+        forecast_results = self.forecast_by_department(steps=1)
+        
+        if not forecast_results:
+            return []
+            
+        tomorrow_data = forecast_results[0]
+        status_results = []
+        
+        for dept in departments:
+            count = tomorrow_data.get(dept.id, 0)
+            # Calculate actual doctor count to ensure capacity is accurate
+            from users.models import Profile
+            actual_doctor_count = Profile.objects.filter(department=dept, role='doctor', is_active=True).count()
+            
+            # Capacity: 15 patients per doctor per day
+            capacity = max(1, actual_doctor_count * 15)
+            percent = min(100, int((count / capacity) * 100))
+            
+            status = "Normal"
+            color = "text-green-500"
+            dot = "🟢"
+            
+            if percent > 80:
+                status = "High"
+                color = "text-red-500"
+                dot = "🔴"
+            elif percent > 60:
+                status = "Moderate"
+                color = "text-orange-500"
+                dot = "🟡"
+            
+            status_results.append({
+                "name": dept.name,
+                "status": status,
+                "percent": percent,
+                "color": color,
+                "dot": dot
+            })
+            
+        return status_results
+    def evaluate(self, test_days=14):
+        """
+        Evaluate the ARIMA model using a train/test split.
+        Returns MAE, RMSE, and MAPE.
+        """
+        data = self.get_historical_data(days=90)
+        if len(data) < test_days + 10:
+            return {"error": "Insufficient data for evaluation"}
+
+        # Train/Test Split
+        train = data.iloc[:-test_days]
+        test = data.iloc[-test_days:]
+
+        try:
+            # Fit model on training data
+            model = ARIMA(train['count'], order=(7, 1, 1))
+            model_fit = model.fit()
+
+            # Forecast for the test period
+            predictions = model_fit.forecast(steps=test_days)
+            
+            # Metrics calculation
+            actual = test['count'].values
+            mae = np.mean(np.abs(predictions - actual))
+            rmse = np.sqrt(np.mean((predictions - actual)**2))
+            
+            # MAPE (Handle zeros by adding small epsilon or skipping)
+            mask = actual != 0
+            if np.any(mask):
+                mape = np.mean(np.abs((actual[mask] - predictions[mask]) / actual[mask])) * 100
+            else:
+                mape = 0.0
+
+            return {
+                "mae": round(float(mae), 2),
+                "rmse": round(float(rmse), 2),
+                "mape": f"{round(float(mape), 2)}%",
+                "status": "Success"
+            }
+        except Exception as e:
+            return {"error": str(e), "status": "Failed"}

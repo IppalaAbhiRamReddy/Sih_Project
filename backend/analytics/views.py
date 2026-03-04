@@ -2,7 +2,7 @@ from rest_framework import viewsets, response
 from rest_framework.decorators import action
 from .models import AIAnalytics
 from .serializers import AIAnalyticsSerializer
-from .ml_models import ARIMAForecaster, KNNClassifier
+from .ml_models import ARIMAForecaster, DiseaseClassifier
 from django.utils import timezone
 from users.models import Profile # To get hospital_id from user profile
 
@@ -26,12 +26,14 @@ class AIAnalyticsViewSet(viewsets.ModelViewSet):
             return response.Response({"error": "Hospital ID not found for user"}, status=400)
 
         forecaster = ARIMAForecaster(hospital_id=hospital_id)
-        # We can either return cached results from AIAnalytics model 
-        # or calculate on the fly for small datasets/testing.
-        # For now, let's calculate on the fly to see it working.
-        forecast_data = forecaster.forecast_by_department(steps=7)
         
-        return response.Response(forecast_data)
+        forecast_data = forecaster.forecast_by_department(steps=7)
+        load_status = forecaster.get_department_load_status()
+        
+        return response.Response({
+            "forecast": forecast_data,
+            "status": load_status
+        })
 
     @action(detail=False, methods=['get'])
     def disease_distribution(self, request):
@@ -39,7 +41,23 @@ class AIAnalyticsViewSet(viewsets.ModelViewSet):
         if not hospital_id:
             return response.Response({"error": "Hospital ID not found for user"}, status=400)
         
-        classifier = KNNClassifier(hospital_id=hospital_id)
+        classifier = DiseaseClassifier(hospital_id=hospital_id)
         distribution = classifier.predict_distribution()
         
         return response.Response(distribution)
+
+    @action(detail=False, methods=['get'])
+    def evaluate_models(self, request):
+        hospital_id = self.get_hospital_id()
+        if not hospital_id:
+            return response.Response({"error": "Hospital ID not found for user"}, status=400)
+
+        forecaster = ARIMAForecaster(hospital_id=hospital_id)
+        classifier = DiseaseClassifier(hospital_id=hospital_id)
+
+        metrics = {
+            "arima_forecasting": forecaster.evaluate(),
+            "disease_classification": classifier.evaluate()
+        }
+
+        return response.Response(metrics)

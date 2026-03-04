@@ -1,4 +1,4 @@
 from .arima_model import ARIMAForecaster
-from .knn_model import KNNClassifier
+from .disease_model import DiseaseClassifier
 
-__all__ = ['ARIMAForecaster', 'KNNClassifier']
+__all__ = ['ARIMAForecaster', 'DiseaseClassifier']

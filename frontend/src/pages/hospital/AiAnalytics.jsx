@@ -66,15 +66,10 @@ export default function AiAnalytics() {
                 hospitalService.getAnalyticsDiseaseDistribution(timeRange, selectedDept)
             ]);
 
-            setLoadForecastData(forecast);
-            setDiseaseData(diseases);
+            setLoadForecastData(forecast.forecast || []);
+            setDiseaseData(diseases || []);
 
-            setDepartmentStatus([
-                { name: 'Cardiology', status: 'High', percent: 88, color: 'text-red-500', dot: '🔴' },
-                { name: 'General Medicine', status: 'High', percent: 85, color: 'text-red-500', dot: '🔴' },
-                { name: 'Orthopedics', status: 'Moderate', percent: 72, color: 'text-orange-500', dot: '🟡' },
-                { name: 'ENT', status: 'Normal', percent: 45, color: 'text-green-500', dot: '🟢' },
-            ]);
+            setDepartmentStatus(forecast.status || []);
 
         } catch (error) {
             console.error("Failed to fetch analytics", error);
