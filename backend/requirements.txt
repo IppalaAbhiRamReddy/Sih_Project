@@ -1,11 +1,11 @@
-Django>=5.0
+Django
 djangorestframework
-djangorestframework-simplejwt
+gunicorn
 psycopg2-binary
 django-cors-headers
 python-dotenv
+whitenoise
+djangorestframework-simplejwt
 pandas
 scikit-learn
 statsmodels
-gunicorn
-whitenoise
