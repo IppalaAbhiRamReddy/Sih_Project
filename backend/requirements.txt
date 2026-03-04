@@ -9,4 +9,5 @@ djangorestframework-simplejwt
 pandas
 scikit-learn
 statsmodels
+
 dj-database-url

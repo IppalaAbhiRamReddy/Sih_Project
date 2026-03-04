@@ -148,6 +148,15 @@ SIMPLE_JWT = {
 
 # CORS Configuration
 CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_CREDENTIALS = True
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://*.vercel.app",
+    "https://sih-project-*.vercel.app",
+]
+
+# Optional but helpful for debugging
+CORS_EXPOSE_HEADERS = ['Content-Type', 'X-CSRFToken']
 
 
 # Password validation

@@ -9,6 +9,7 @@ from users.models import Profile # To get hospital_id from user profile
 class AIAnalyticsViewSet(viewsets.ModelViewSet):
     queryset = AIAnalytics.objects.all()
     serializer_class = AIAnalyticsSerializer
+    permission_classes = [permissions.IsAuthenticated]
 
     def get_hospital_id(self):
         # Helper to get hospital_id from the logged-in user's profile
