@@ -4,9 +4,11 @@
 
 import { supabase } from "../lib/supabase";
 
-const DRF_BASE_URL = (
-  import.meta.env.VITE_API_URL || "http://localhost:8000/api"
-).replace(/\/$/, "");
+const getBaseUrl = () => {
+  let url = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
+  return url.endsWith("/") ? url.slice(0, -1) : url;
+};
+const DRF_BASE_URL = getBaseUrl();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
