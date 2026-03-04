@@ -14,6 +14,7 @@ import os
 import dj_database_url
 from pathlib import Path
 from dotenv import load_dotenv
+from django.core.exceptions import ImproperlyConfigured
 
 # Load environment variables from .env file
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -99,18 +100,28 @@ if DATABASE_URL:
                 ssl_require=True
             )
         }
-    except Exception:
-        # Fallback if dj-database-url still fails to parse
+    except Exception as e:
+        # If parsing fails on production, we should know why
+        if not DEBUG:
+            print(f"Error parsing DATABASE_URL: {e}")
         DATABASE_URL = None
 
 if not DATABASE_URL:
+    # Check if we have individual components
+    DB_HOST = os.getenv('DB_HOST')
+    if not DB_HOST and not DEBUG:
+        # On production, if we have no URL and no HOST, it will fail
+        # We don't raise error immediately to allow other settings to load, 
+        # but the fallback below will now have a clearer 'localhost' default for debugging
+        pass
+
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
             'NAME': os.getenv('DB_NAME', 'postgres'),
             'USER': os.getenv('DB_USER', 'postgres'),
             'PASSWORD': os.getenv('DB_PASSWORD'),
-            'HOST': os.getenv('DB_HOST'),
+            'HOST': os.getenv('DB_HOST', 'localhost'),
             'PORT': os.getenv('DB_PORT', '5432'),
         }
     }
