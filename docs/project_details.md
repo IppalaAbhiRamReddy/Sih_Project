@@ -30,6 +30,6 @@ A role-based health record management system with 5 distinct roles:
 ## Tech Stack Details
 
 - **Frontend**: React, Vite, MUI/Tailwind, Recharts, Axios.
-- **Backend**: Django, DRF, SimpleJWT, Celery (optional).
+- **Backend**: Django, DRF, SimpleJWT.
 - **Database**: PostgreSQL.
 - **ML**: Scikit-learn, Pandas, Statsmodels.

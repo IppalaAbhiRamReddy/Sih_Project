@@ -1,67 +1,78 @@
 # Deployment Guide
 
-Since you have already pushed your code to Git, you can set up continuous deployment (CD) so that your live site updates automatically whenever you push changes.
-
-## 1. Frontend Deployment (React + Vite)
-
-The easiest way to deploy a Vite React app is using **Vercel** or **Netlify**. Both have free tiers.
-
-### Option A: Using Vercel (Recommended)
-
-1. Go to [Vercel.com](https://vercel.com) and Sign Up / Login with your GitHub/GitLab account.
-2. Click **"Add New..."** -> **"Project"**.
-3. Import your `sih_project` repository.
-4. **Configure Project**:
-   - **Framework Preset**: Vercel should automatically detect `Vite`.
-   - **Root Directory**: Click "Edit" and select the `frontend` folder. **(Crucial Step)**.
-   - **Build Command**: `npm run build` (Default).
-   - **Output Directory**: `dist` (Default).
-5. Click **Deploy**.
-6. Once finished, you will get a URL (e.g., `https://sih-project-frontend.vercel.app`).
-
-### Option B: Using Netlify
-
-1. Go to [Netlify.com](https://netlify.com) and Login.
-2. Click **"Add new site"** -> **"Import from an existing project"**.
-3. Connect your Git provider and pick your repository.
-4. **Site settings**:
-   - **Base directory**: `frontend`
-   - **Build command**: `npm run build`
-   - **Publish directory**: `dist`
-5. Click **Deploy site**.
+This guide provides step-by-step instructions for deploying the **Digital Health Care Record System** with the Frontend on **AWS** and the Backend on **Render**.
 
 ---
 
-## 2. Backend Deployment (Django)
+## 1. Frontend Deployment (AWS Amplify)
 
-> **Note**: It essentially appears your `backend` folder currently only contains `requirements.txt` and a virtual environment. You will need to initialize your fresh Django project (containing `manage.py`, `settings.py`, etc.) before you can successfully deploy the backend.
+AWS Amplify is the easiest way to deploy a modern Vite + React application on AWS with built-in CI/CD.
 
-Once your Django code is ready, **Render** or **Railway** are great options.
+### Steps:
 
-### Prerequisites for Django Deployment
+1.  **Sign in to AWS Console**: Go to [AWS Amplify](https://console.aws.amazon.com/amplify/home).
+2.  **Create New App**: Click **"New App"** -> **"Host web app"**.
+3.  **Connect Git**: Select **GitHub** and authorize AWS to access your repository.
+4.  **Select Repository**: Pick your `Sih_Project` repository and the `main` branch.
+5.  **Configure Build Settings**:
+    - **App Name**: `digital-healthcare-frontend`
+    - **Framework**: It should detect "Web".
+    - **Root Directory**: Set this to `frontend`.
+    - **Build Command**: `npm run build`
+    - **Output Directory**: `dist`
+6.  **Advanced Settings (Environment Variables)**:
+    - Add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
+    - Add `VITE_API_URL` (this will be your Render backend URL, e.g., `https://sih-backend.onrender.com/api`).
+7.  **Save and Deploy**: Click **"Save and Deploy"**. AWS will now build and host your site.
 
-Before deploying, ensure you have:
+---
 
-1. **`gunicorn`** installed and in your `requirements.txt` (it serves the app in production).
-2. A `Procfile` (optional but good for some platforms) or a specified "Start Command".
-3. `ALLOWED_HOSTS` in `settings.py` set to `['*']` or your deployment domain.
+## 2. Backend Deployment (Render)
 
-### Deployment on Render (Free Tier available)
+Render provides an easy-to-use platform for hosting Django applications with automated deployments from Git.
 
-1. Go to [Render.com](https://render.com).
-2. Click **"New"** -> **"Web Service"**.
-3. Connect your Git repo.
-4. **Settings**:
-   - **Root Directory**: `backend`
-   - **Runtime**: Python 3
-   - **Build Command**: `pip install -r requirements.txt && python manage.py migrate`
-   - **Start Command**: `gunicorn <your_project_name>.wsgi:application`
-5. Create the service.
+### Prerequisites:
 
-## 3. Connecting Frontend to Backend
+Ensure your `backend/requirements.txt` includes `gunicorn` and `psycopg2-binary`. (Already included in this project).
 
-Once both are deployed:
+### Steps:
 
-1. In your **Frontend** (Vercel/Netlify), go to Settings -> Environment Variables.
-2. Add `VITE_API_URL` (or whatever variable you use) with the value of your deployed Backend URL (e.g., `https://sih-backend.onrender.com`).
-3. Redeploy the frontend for changes to take effect.
+1.  **Create Account**: Log in to [Render.com](https://render.com).
+2.  **New Web Service**: Click **"New +"** -> **"Web Service"**.
+3.  **Connect Repository**: Link your GitHub repository.
+4.  **Configure Service**:
+    - **Name**: `sih-backend`
+    - **Root Directory**: `backend`
+    - **Runtime**: `Python 3`
+    * **Build Command**: `pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --noinput`
+    - **Start Command**: `gunicorn sih_backend.wsgi:application`
+5.  **Environment Variables**:
+    - Click **"Advanced"** -> **"Add Environment Variable"**.
+    - `SECRET_KEY`: (Generate a secure random string)
+    - `DEBUG`: `False`
+    - `DATABASE_URL`: (Your Supabase/PostgreSQL connection string)
+    - `ALLOWED_HOSTS`: `sih-backend.onrender.com` (use your actual Render domain)
+6.  **Deploy**: Click **"Create Web Service"**.
+
+---
+
+## 3. Post-Deployment Configuration
+
+### Update CORS in Backend
+
+Once your frontend is live on AWS (e.g., `https://main.d123.amplifyapp.com`), ensure you add this domain to the `CORS_ALLOWED_ORIGINS` in your Django `settings.py` or as an environment variable if configured.
+
+### Update API URL in Frontend
+
+Ensure your React app's `VITE_API_URL` points to the Render domain (e.g., `https://sih-backend.onrender.com/api`).
+
+---
+
+## 4. Database Setup (Supabase/PostgreSQL)
+
+If you are using Supabase:
+
+1. Create a new project in Supabase.
+2. Get the Connection String from Project Settings -> Database.
+3. Use this as the `DATABASE_URL` in your Render backend settings.
+4. Run migrations via Render's build command or manually via terminal.
