@@ -1,4 +1,4 @@
-from rest_framework import viewsets, response
+from rest_framework import viewsets, response, permissions
 from rest_framework.decorators import action
 from .models import AIAnalytics
 from .serializers import AIAnalyticsSerializer
