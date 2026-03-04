@@ -59,7 +59,7 @@ export default function Login() {
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-            <div className="w-full max-w-md bg-white rounded-2xl shadow-md border border-gray-100 p-8">
+            <div className="w-full max-w-md bg-white rounded-2xl shadow-md border border-gray-100 p-6 sm:p-8">
 
                 {/* Header */}
                 <div className="text-center mb-8">

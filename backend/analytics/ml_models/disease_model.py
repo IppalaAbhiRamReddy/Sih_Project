@@ -11,14 +11,18 @@ class DiseaseClassifier:
     def __init__(self, hospital_id):
         self.hospital_id = hospital_id
 
-    def get_distribution_data(self, days=180):
+    def get_distribution_data(self, days=180, department_id=None):
         end_date = timezone.now()
         start_date = end_date - timedelta(days=days)
         
-        visits = Visit.objects.filter(
-            hospital_id=self.hospital_id,
-            visit_date__range=(start_date, end_date)
-        ).values('visit_date', 'diagnosis', 'patient__age', 'patient__gender')
+        query = {
+            'hospital_id': self.hospital_id,
+            'visit_date__range': (start_date, end_date)
+        }
+        if department_id and department_id != 'all':
+            query['doctor__department_id'] = department_id
+
+        visits = Visit.objects.filter(**query).values('visit_date', 'diagnosis', 'patient__age', 'patient__gender')
         
         if not visits:
             return pd.DataFrame()
@@ -37,15 +41,15 @@ class DiseaseClassifier:
         
         return df
 
-    def predict_distribution(self, target_date=None, context_age=30, context_gender='Male'):
+    def predict_distribution(self, days=180, department_id=None, target_date=None, context_age=30, context_gender='Male'):
         """
         Predict distribution based on date context and optional demographics.
         """
         if target_date is None:
             target_date = timezone.now()
             
-        df = self.get_distribution_data()
-        if df.empty or len(df) < 20:
+        df = self.get_distribution_data(days=days, department_id=department_id)
+        if df.empty or len(df) < 5: # Lowering threshold for small filter ranges
             return self.get_default_distribution()
 
         try:

@@ -20,8 +20,10 @@ import {
     User,
     Users,
     CheckSquare,
-    History
+    History,
+    Menu
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { patientService, doctorService } from '../../services/api';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -31,6 +33,7 @@ import { useAuth } from '../../context/AuthContext';
 export default function DoctorDashboard() {
     const navigate = useNavigate();
     const { profile, signOut } = useAuth();
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
     const [searchValue, setSearchValue] = useState('');
     const [patient, setPatient] = useState(null);
@@ -139,11 +142,11 @@ export default function DoctorDashboard() {
     };
 
     return (
-        <div className="min-h-screen bg-gray-50 flex">
+        <div className="min-h-screen bg-gray-50 flex flex-col lg:flex-row">
             {/* Sidebar */}
-            <aside className="w-80 bg-white border-r border-gray-200 flex flex-col fixed h-full z-10 overflow-y-auto">
-                <div className="p-6 border-b border-gray-100">
-                    <div className="flex items-center gap-3 mb-6">
+            <aside className={`w-80 bg-white border-r border-gray-200 flex flex-col fixed inset-y-0 left-0 z-50 transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} h-full overflow-y-auto`}>
+                <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+                    <div className="flex items-center gap-3">
                         <div className="p-2 bg-blue-600 rounded-lg">
                             <Stethoscope className="w-6 h-6 text-white" />
                         </div>
@@ -152,8 +155,12 @@ export default function DoctorDashboard() {
                             <p className="text-xs text-gray-500">{profile?.full_name ?? 'Doctor'}</p>
                         </div>
                     </div>
-
-
+                    <button
+                        onClick={() => setIsSidebarOpen(false)}
+                        className="lg:hidden p-2 text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                        <X className="w-5 h-5" />
+                    </button>
                 </div>
 
                 <nav className="flex-1 px-4 py-4 space-y-4">
@@ -215,8 +222,37 @@ export default function DoctorDashboard() {
                 </div>
             </aside>
 
+            {/* Overlay for mobile sidebar */}
+            <AnimatePresence>
+                {isSidebarOpen && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        onClick={() => setIsSidebarOpen(false)}
+                        className="fixed inset-0 bg-black/40 z-40 lg:hidden backdrop-blur-sm"
+                    />
+                )}
+            </AnimatePresence>
+
             {/* Main Content */}
-            <main className="flex-1 ml-80 p-8">
+            <main className="flex-1 lg:ml-80 p-4 sm:p-8 w-full max-w-full overflow-hidden">
+                {/* Mobile Top Bar */}
+                <div className="lg:hidden flex items-center justify-between bg-white px-4 py-3 border-b border-gray-100 sticky top-0 z-30 mb-6 -mx-4 sm:-mx-8">
+                    <button
+                        onClick={() => setIsSidebarOpen(true)}
+                        className="p-2 -ml-2 text-gray-600 hover:text-blue-600 transition-colors"
+                    >
+                        <Menu className="w-6 h-6" />
+                    </button>
+                    <div className="flex items-center gap-2">
+                        <div className="p-1.5 bg-blue-600 rounded">
+                            <Stethoscope className="w-5 h-5 text-white" />
+                        </div>
+                        <span className="font-bold text-gray-900">Health Portal</span>
+                    </div>
+                    <div className="w-10"></div>
+                </div>
 
                 {/* Search Bar */}
                 <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-6">
@@ -326,7 +362,7 @@ export default function DoctorDashboard() {
                                             <span className="text-xs font-medium text-gray-500 italic">History View</span>
                                         </div>
                                     </div>
-                                    <div className="max-h-[500px] overflow-y-auto">
+                                    <div className="max-h-[500px] overflow-y-auto overflow-x-auto">
                                         {recentVisits.length === 0 ? (
                                             <div className="p-16 text-center text-gray-400">
                                                 <Activity className="w-10 h-10 mx-auto mb-3 opacity-30" />
@@ -334,7 +370,7 @@ export default function DoctorDashboard() {
                                                 <p className="text-sm mt-1">Search for a patient to start your first visit record</p>
                                             </div>
                                         ) : (
-                                            <table className="w-full">
+                                            <table className="w-full min-w-[700px]">
                                                 <thead className="bg-gray-50 text-left sticky top-0 z-10">
                                                     <tr>
                                                         <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Patient Name</th>
@@ -459,31 +495,33 @@ export default function DoctorDashboard() {
                         </div>
 
                         {/* Tabs */}
-                        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl mb-6 w-fit">
-                            {[
-                                { id: 'visits', label: 'Visit History', icon: Activity },
-                                { id: 'prescriptions', label: 'Prescriptions', icon: Pill },
-                                { id: 'labs', label: 'Lab Reports', icon: FileText },
-                                { id: 'vaccinations', label: 'Vaccinations', icon: Syringe },
-                            ].map(({ id, label, icon: Icon }) => (
-                                <button
-                                    key={id}
-                                    onClick={() => setActiveTab(id)}
-                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                                >
-                                    <Icon className="w-4 h-4" />
-                                    {label}
-                                    <span className={`ml-1 text-xs px-1.5 py-0.5 rounded-full font-semibold ${activeTab === id ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-500'}`}>
-                                        {id === 'visits'
-                                            ? patient.visits?.length
-                                            : id === 'prescriptions'
-                                                ? (patient.visits?.filter(v => v.prescription)?.length ?? 0)
-                                                : id === 'labs'
-                                                    ? patient.labReports?.length
-                                                    : patient.vaccinations?.length}
-                                    </span>
-                                </button>
-                            ))}
+                        <div className="mb-6 overflow-x-auto pb-2 no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
+                            <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit min-w-max">
+                                {[
+                                    { id: 'visits', label: 'Visit History', icon: Activity },
+                                    { id: 'prescriptions', label: 'Prescriptions', icon: Pill },
+                                    { id: 'labs', label: 'Lab Reports', icon: FileText },
+                                    { id: 'vaccinations', label: 'Vaccinations', icon: Syringe },
+                                ].map(({ id, label, icon: Icon }) => (
+                                    <button
+                                        key={id}
+                                        onClick={() => setActiveTab(id)}
+                                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                    >
+                                        <Icon className="w-4 h-4" />
+                                        {label}
+                                        <span className={`ml-1 text-xs px-1.5 py-0.5 rounded-full font-semibold ${activeTab === id ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-500'}`}>
+                                            {id === 'visits'
+                                                ? patient.visits?.length
+                                                : id === 'prescriptions'
+                                                    ? (patient.visits?.filter(v => v.prescription)?.length ?? 0)
+                                                    : id === 'labs'
+                                                        ? patient.labReports?.length
+                                                        : patient.vaccinations?.length}
+                                        </span>
+                                    </button>
+                                ))}
+                            </div>
                         </div>
 
                         {/* Visits Tab */}
@@ -581,14 +619,14 @@ export default function DoctorDashboard() {
 
                         {/* Vaccinations Tab */}
                         {activeTab === 'vaccinations' && (
-                            <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+                            <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden overflow-x-auto">
                                 {patient.vaccinations?.length === 0 ? (
                                     <div className="p-12 text-center text-gray-400">
                                         <Syringe className="w-10 h-10 mx-auto mb-3 opacity-30" />
                                         <p>No vaccination records found.</p>
                                     </div>
                                 ) : (
-                                    <table className="w-full">
+                                    <table className="w-full min-w-[600px]">
                                         <thead className="bg-gray-50">
                                             <tr>
                                                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase cursor-pointer">Vaccine</th>
@@ -636,8 +674,8 @@ export default function DoctorDashboard() {
                                         <p>No lab reports yet.</p>
                                     </div>
                                 ) : (
-                                    <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-                                        <table className="w-full">
+                                    <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden overflow-x-auto">
+                                        <table className="w-full min-w-[600px]">
                                             <thead className="bg-gray-50">
                                                 <tr>
                                                     <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Report Name</th>

@@ -16,7 +16,8 @@ import {
     Hash,
     Loader
 } from 'lucide-react';
-import { Edit, Save, X, KeySquare } from 'lucide-react';
+import { Edit, Save, X, KeySquare, Menu } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { Modal } from '../../components/ui/Modal';
@@ -27,6 +28,7 @@ import { adminService } from '../../services/api';
 export default function AdminDashboard() {
     const navigate = useNavigate();
     const { signOut } = useAuth();
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isRegisterOpen, setIsRegisterOpen] = useState(false);
     const [selectedHospital, setSelectedHospital] = useState(null);
     const [editingHospital, setEditingHospital] = useState(false);
@@ -128,10 +130,10 @@ export default function AdminDashboard() {
     );
 
     return (
-        <div className="min-h-screen bg-gray-50 flex">
-            {/* Sidebar (unchanged) */}
-            <aside className="w-80 bg-white border-r border-gray-200 flex flex-col fixed h-full z-10 overflow-y-auto">
-                <div className="p-6 border-b border-gray-100 mb-2">
+        <div className="min-h-screen bg-gray-50 flex flex-col lg:flex-row">
+            {/* Sidebar */}
+            <aside className={`w-80 bg-white border-r border-gray-200 flex flex-col fixed inset-y-0 left-0 z-50 transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} h-full overflow-y-auto`}>
+                <div className="p-6 border-b border-gray-100 mb-2 flex justify-between items-center">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-blue-600 rounded-lg">
                             <Shield className="w-6 h-6 text-white" />
@@ -141,6 +143,12 @@ export default function AdminDashboard() {
                             <p className="text-xs text-gray-500">System Administrator</p>
                         </div>
                     </div>
+                    <button
+                        onClick={() => setIsSidebarOpen(false)}
+                        className="lg:hidden p-2 text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                        <X className="w-5 h-5" />
+                    </button>
                 </div>
 
                 <nav className="flex-1 px-4 space-y-6">
@@ -195,10 +203,39 @@ export default function AdminDashboard() {
                 </div>
             </aside>
 
+            {/* Overlay for mobile sidebar */}
+            <AnimatePresence>
+                {isSidebarOpen && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        onClick={() => setIsSidebarOpen(false)}
+                        className="fixed inset-0 bg-black/40 z-40 lg:hidden backdrop-blur-sm"
+                    />
+                )}
+            </AnimatePresence>
+
             {/* Main Content */}
-            <main className="flex-1 ml-80 p-8">
+            <main className="flex-1 lg:ml-80 p-4 sm:p-8 w-full max-w-full overflow-hidden">
+                {/* Mobile Top Bar */}
+                <div className="lg:hidden flex items-center justify-between bg-white px-4 py-3 border-b border-gray-100 sticky top-0 z-30 mb-6 -mx-4 sm:-mx-8">
+                    <button
+                        onClick={() => setIsSidebarOpen(true)}
+                        className="p-2 -ml-2 text-gray-600 hover:text-blue-600 transition-colors"
+                    >
+                        <Menu className="w-6 h-6" />
+                    </button>
+                    <div className="flex items-center gap-2">
+                        <div className="p-1.5 bg-blue-600 rounded">
+                            <Shield className="w-5 h-5 text-white" />
+                        </div>
+                        <span className="font-bold text-gray-900">Admin Panel</span>
+                    </div>
+                    <div className="w-10"></div>
+                </div>
                 {/* Header */}
-                <div className="flex justify-between items-center mb-8">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
                     <div>
                         <h2 className="text-2xl font-bold text-gray-900">System Overview</h2>
                         <p className="text-gray-500">Manage system access and hospital authorities</p>
@@ -237,22 +274,22 @@ export default function AdminDashboard() {
 
                 {/* Hospital Table Container */}
                 <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col max-h-[400px]">
-                    <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white sticky top-0 z-20">
+                    <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white sticky top-0 z-20">
                         <h3 className="font-bold text-gray-900">Hospital Authority Management</h3>
-                        <div className="relative">
+                        <div className="relative w-full sm:w-64">
                             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                             <input
                                 type="text"
                                 placeholder="Search hospitals..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 w-64"
+                                className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500"
                             />
                         </div>
                     </div>
 
-                    <div className="overflow-y-auto flex-1">
-                        <table className="w-full">
+                    <div className="overflow-y-auto flex-1 overflow-x-auto">
+                        <table className="w-full min-w-[600px]">
                             <thead className="bg-gray-50 text-left sticky top-0 z-10 shadow-sm">
                                 <tr>
                                     <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider bg-gray-50">Authority ID</th>

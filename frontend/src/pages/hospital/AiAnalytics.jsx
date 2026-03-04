@@ -78,17 +78,8 @@ export default function AiAnalytics() {
         }
     };
 
-    if (loading) {
-        return (
-            <div className="flex flex-col items-center justify-center h-96">
-                <Loader className="w-12 h-12 text-blue-600 animate-spin mb-4" />
-                <p className="text-gray-500 font-medium">Loading analytics data...</p>
-            </div>
-        );
-    }
-
     return (
-        <div className="p-8 space-y-8 animate-fade-in">
+        <div className={`p-8 space-y-8 transition-opacity duration-300 ${loading ? 'opacity-60 pointer-events-none' : 'opacity-100'}`}>
             {/* Info Banner */}
             <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex items-center gap-3">
                 <Brain className="w-5 h-5 text-pink-500 shrink-0" />
@@ -196,7 +187,12 @@ export default function AiAnalytics() {
                             </h3>
                             <p className="text-xs text-gray-500 mt-1">Top diagnosis categories for the selected time period</p>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 relative">
+                            {loading && (
+                                <div className="absolute -left-8 top-1/2 -translate-y-1/2">
+                                    <Loader className="w-4 h-4 text-blue-600 animate-spin" />
+                                </div>
+                            )}
                             <div className="w-40">
                                 <Select
                                     options={timeOptions}

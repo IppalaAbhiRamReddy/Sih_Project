@@ -12,12 +12,18 @@ import {
     Syringe,
     Calendar,
     User,
-    LogOut,
-    CheckCircle,
-    Loader,
     Phone,
     MapPin,
-    HeartPulse
+    HeartPulse,
+    Menu,
+    X,
+    ChevronRight,
+    Search,
+    Filter,
+    ArrowUpDown,
+    ShieldCheck,
+    Layout,
+    History,
 } from 'lucide-react';
 import { patientService } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
@@ -102,8 +108,8 @@ const LabReports = React.memo(({ labReports }) => {
     }
 
     return (
-        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <table className="w-full">
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-x-auto">
+            <table className="w-full min-w-[600px]">
                 <thead className="bg-gray-50">
                     <tr>
                         <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Report Name</th>
@@ -155,8 +161,8 @@ const Vaccinations = React.memo(({ vaccinations }) => {
     }
 
     return (
-        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <table className="w-full">
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-x-auto">
+            <table className="w-full min-w-[600px]">
                 <thead className="bg-gray-50">
                     <tr>
                         <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Vaccine</th>
@@ -201,6 +207,7 @@ export default function PatientDashboard() {
     const [loading, setLoading] = useState(true);
     const [tabLoading, setTabLoading] = useState(false);
     const [error, setError] = useState(null);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [activeTab, setActiveTab] = useState('visits');
     const [loadedTabs, setLoadedTabs] = useState(new Set());
 
@@ -306,9 +313,9 @@ export default function PatientDashboard() {
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 flex">
+        <div className="min-h-screen bg-gray-50 flex flex-col lg:flex-row">
             {/* Sidebar */}
-            <aside className="w-80 bg-white border-r border-gray-200 flex flex-col fixed h-full z-10 overflow-y-auto">
+            <aside className={`w-80 bg-white border-r border-gray-200 flex flex-col fixed inset-y-0 left-0 z-50 transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} h-full overflow-y-auto`}>
                 <div className="p-6 border-b border-gray-100">
                     <div className="flex items-center gap-3 mb-5">
                         <div className="p-2 bg-teal-600 rounded-lg">
@@ -436,13 +443,43 @@ export default function PatientDashboard() {
                 </div>
             </aside>
 
+            {/* Overlay for mobile sidebar */}
+            <AnimatePresence>
+                {isSidebarOpen && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        onClick={() => setIsSidebarOpen(false)}
+                        className="fixed inset-0 bg-black/40 z-40 lg:hidden backdrop-blur-sm"
+                    />
+                )}
+            </AnimatePresence>
+
             {/* Main Content */}
-            <main className="flex-1 ml-80 p-8">
+            <main className="flex-1 lg:ml-80 p-4 sm:p-8 w-full max-w-full overflow-hidden">
+
+                {/* Mobile Top Bar */}
+                <div className="lg:hidden flex items-center justify-between bg-white px-4 py-3 border-b border-gray-100 sticky top-0 z-30 mb-6 -mx-4 sm:-mx-8">
+                    <button
+                        onClick={() => setIsSidebarOpen(true)}
+                        className="p-2 -ml-2 text-gray-600 hover:text-teal-600 transition-colors"
+                    >
+                        <Menu className="w-6 h-6" />
+                    </button>
+                    <div className="flex items-center gap-2">
+                        <div className="p-1.5 bg-teal-600 rounded">
+                            <Activity className="w-5 h-5 text-white" />
+                        </div>
+                        <span className="font-bold text-gray-900">Patient Dashboard</span>
+                    </div>
+                    <div className="w-10"></div>
+                </div>
 
                 {/* Patient Header Banner */}
                 {patient && (
-                    <div className="bg-gradient-to-r from-teal-600 to-cyan-600 rounded-xl p-6 mb-6 text-white shadow-sm">
-                        <div className="flex justify-between items-start">
+                    <div className="bg-gradient-to-r from-teal-600 to-cyan-600 rounded-xl p-4 sm:p-6 mb-6 text-white shadow-sm">
+                        <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
                             <div className="flex items-center gap-4">
                                 <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
                                     <span className="text-2xl font-bold">{patient.name?.charAt(0)}</span>
@@ -462,30 +499,32 @@ export default function PatientDashboard() {
                 )}
 
                 {/* Tabs */}
-                <div className="flex items-center gap-4 mb-6">
-                    <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
-                        {[
-                            { id: 'visits', label: 'Visit History', icon: Activity },
-                            { id: 'prescriptions', label: 'Prescriptions', icon: Pill },
-                            { id: 'labs', label: 'Lab Reports', icon: FileText },
-                            { id: 'vaccinations', label: 'Vaccinations', icon: Syringe },
-                        ].map(({ id, label, icon: Icon }) => (
-                            <button
-                                key={id}
-                                onClick={() => setActiveTab(id)}
-                                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                            >
-                                <Icon className="w-4 h-4" />
-                                {label}
-                            </button>
-                        ))}
-                    </div>
-                    {tabLoading && (
-                        <div className="flex items-center gap-2 text-teal-600 animate-pulse">
-                            <Loader className="w-4 h-4 animate-spin" />
-                            <span className="text-xs font-medium">Updating...</span>
+                <div className="mb-6 overflow-x-auto pb-2 no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
+                    <div className="flex items-center gap-4 min-w-max">
+                        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
+                            {[
+                                { id: 'visits', label: 'Visit History', icon: History },
+                                { id: 'prescriptions', label: 'Prescriptions', icon: Pill },
+                                { id: 'labs', label: 'Lab Reports', icon: FileText },
+                                { id: 'vaccinations', label: 'Vaccinations', icon: Syringe },
+                            ].map(({ id, label, icon: Icon }) => (
+                                <button
+                                    key={id}
+                                    onClick={() => setActiveTab(id)}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === id ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                >
+                                    <Icon className="w-4 h-4" />
+                                    {label}
+                                </button>
+                            ))}
                         </div>
-                    )}
+                        {tabLoading && (
+                            <div className="flex items-center gap-2 text-teal-600 animate-pulse">
+                                <Loader className="w-4 h-4 animate-spin" />
+                                <span className="text-xs font-medium">Updating...</span>
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {/* Tab Content */}

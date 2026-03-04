@@ -12,8 +12,10 @@ import {
     Search,
     X,
     Plus,
-    Syringe
+    Syringe,
+    Menu
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Modal } from '../../components/ui/Modal';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
@@ -24,6 +26,7 @@ import { useAuth } from '../../context/AuthContext';
 export default function StaffDashboard() {
     const navigate = useNavigate();
     const { profile, signOut } = useAuth();
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
     const [isRegisterOpen, setIsRegisterOpen] = useState(false);
     const [isEditOpen, setIsEditOpen] = useState(false);
@@ -226,10 +229,10 @@ export default function StaffDashboard() {
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 flex">
+        <div className="min-h-screen bg-gray-50 flex flex-col lg:flex-row">
             {/* Sidebar */}
-            <aside className="w-80 bg-white border-r border-gray-200 flex flex-col fixed h-full z-10 overflow-y-auto">
-                <div className="p-6 border-b border-gray-100 mb-2">
+            <aside className={`w-80 bg-white border-r border-gray-200 flex flex-col fixed inset-y-0 left-0 z-50 transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} h-full overflow-y-auto`}>
+                <div className="p-6 border-b border-gray-100 mb-2 flex justify-between items-center">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-green-600 rounded-lg">
                             <Users className="w-6 h-6 text-white" />
@@ -239,6 +242,12 @@ export default function StaffDashboard() {
                             <p className="text-xs text-gray-500">{profile?.full_name ?? 'Staff Member'}</p>
                         </div>
                     </div>
+                    <button
+                        onClick={() => setIsSidebarOpen(false)}
+                        className="lg:hidden p-2 text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                        <X className="w-5 h-5" />
+                    </button>
                 </div>
 
                 <nav className="flex-1 px-4 space-y-4">
@@ -302,8 +311,37 @@ export default function StaffDashboard() {
                 </div>
             </aside>
 
+            {/* Overlay for mobile sidebar */}
+            <AnimatePresence>
+                {isSidebarOpen && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        onClick={() => setIsSidebarOpen(false)}
+                        className="fixed inset-0 bg-black/40 z-40 lg:hidden backdrop-blur-sm"
+                    />
+                )}
+            </AnimatePresence>
+
             {/* Main Content */}
-            <main className="flex-1 ml-80 p-8">
+            <main className="flex-1 lg:ml-80 p-4 sm:p-8 w-full max-w-full overflow-hidden">
+                {/* Mobile Top Bar */}
+                <div className="lg:hidden flex items-center justify-between bg-white px-4 py-3 border-b border-gray-100 sticky top-0 z-30 mb-6 -mx-4 sm:-mx-8">
+                    <button
+                        onClick={() => setIsSidebarOpen(true)}
+                        className="p-2 -ml-2 text-gray-600 hover:text-green-600 transition-colors"
+                    >
+                        <Menu className="w-6 h-6" />
+                    </button>
+                    <div className="flex items-center gap-2">
+                        <div className="p-1.5 bg-green-600 rounded">
+                            <Users className="w-5 h-5 text-white" />
+                        </div>
+                        <span className="font-bold text-gray-900">Health Portal</span>
+                    </div>
+                    <div className="w-10"></div>
+                </div>
 
                 {error && (
                     <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6 text-red-700 text-sm">
@@ -312,7 +350,7 @@ export default function StaffDashboard() {
                 )}
 
                 {/* Stats Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
                     <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between">
                         <div>
                             <p className="text-sm font-medium text-gray-500 mb-1">Today's Registrations</p>
@@ -373,7 +411,7 @@ export default function StaffDashboard() {
                             </div>
                         </div>
                     </div>
-                    <div className="max-h-[580px] overflow-y-auto">
+                    <div className="max-h-[580px] overflow-y-auto overflow-x-auto">
                         {recentRegistrations.length === 0 ? (
                             <div className="p-12 text-center text-gray-400">
                                 <UserPlus className="w-10 h-10 mx-auto mb-3 opacity-30" />
@@ -381,7 +419,7 @@ export default function StaffDashboard() {
                                 <p className="text-sm mt-1">Register your first patient using the button on the left</p>
                             </div>
                         ) : (
-                            <table className="w-full relative">
+                            <table className="w-full relative min-w-[800px]">
                                 <thead className="bg-gray-50 text-left sticky top-0 z-10">
                                     <tr>
                                         <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Health ID</th>

@@ -19,21 +19,51 @@ class AIAnalyticsViewSet(viewsets.ModelViewSet):
         except:
             return None
 
+    def get_cached_result(self, metric_name, hospital_id, validity_hours=6):
+        six_hours_ago = timezone.now() - timezone.timedelta(hours=validity_hours)
+        return AIAnalytics.objects.filter(
+            hospital_id=hospital_id,
+            metric_name=metric_name,
+            calculated_at__gte=six_hours_ago
+        ).order_by('-calculated_at').first()
+
+    def set_cached_result(self, metric_name, hospital_id, value):
+        AIAnalytics.objects.create(
+            hospital_id=hospital_id,
+            metric_name=metric_name,
+            metric_date=timezone.now().date(),
+            value=value
+        )
+
     @action(detail=False, methods=['get'])
     def forecast(self, request):
         hospital_id = self.get_hospital_id()
         if not hospital_id:
             return response.Response({"error": "Hospital ID not found for user"}, status=400)
 
+        time_range = request.query_params.get('range', '7d')
+        cache_key = f"forecast_{time_range}"
+        
+        cached = self.get_cached_result(cache_key, hospital_id)
+        if cached:
+            return response.Response(cached.value)
+
         forecaster = ARIMAForecaster(hospital_id=hospital_id)
         
-        forecast_data = forecaster.forecast_by_department(steps=7)
+        # Support dynamic steps based on range (default 7 days)
+        steps_map = {'7d': 7, '30d': 30, '90days': 30, '3m': 30}
+        steps = steps_map.get(time_range, 7)
+        
+        forecast_data = forecaster.forecast_by_department(steps=steps)
         load_status = forecaster.get_department_load_status()
         
-        return response.Response({
+        result = {
             "forecast": forecast_data,
             "status": load_status
-        })
+        }
+        
+        self.set_cached_result(cache_key, hospital_id, result)
+        return response.Response(result)
 
     @action(detail=False, methods=['get'])
     def disease_distribution(self, request):
@@ -41,9 +71,23 @@ class AIAnalyticsViewSet(viewsets.ModelViewSet):
         if not hospital_id:
             return response.Response({"error": "Hospital ID not found for user"}, status=400)
         
-        classifier = DiseaseClassifier(hospital_id=hospital_id)
-        distribution = classifier.predict_distribution()
+        time_range = request.query_params.get('range', '30days')
+        department_id = request.query_params.get('dept', 'all')
+        cache_key = f"disease_dist_{time_range}_{department_id}"
         
+        cached = self.get_cached_result(cache_key, hospital_id)
+        if cached:
+            return response.Response(cached.value)
+
+        classifier = DiseaseClassifier(hospital_id=hospital_id)
+        
+        # Convert range string to days
+        days_map = {'7days': 7, '30days': 30, '90days': 90, '7d': 7, '30d': 30, '3m': 90, '6m': 180}
+        days = days_map.get(time_range, 30)
+        
+        distribution = classifier.predict_distribution(days=days, department_id=department_id)
+        
+        self.set_cached_result(cache_key, hospital_id, distribution)
         return response.Response(distribution)
 
     @action(detail=False, methods=['get'])
