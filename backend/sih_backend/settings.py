@@ -17,7 +17,8 @@ from dotenv import load_dotenv
 
 # Load environment variables from .env file
 BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(BASE_DIR / '.env', override=True)
+# Do NOT use override=True so that Render environment variables take precedence
+load_dotenv(BASE_DIR / '.env')
 
 
 
@@ -86,14 +87,23 @@ WSGI_APPLICATION = 'sih_backend.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-if os.getenv('DATABASE_URL'):
-    DATABASES = {
-        'default': dj_database_url.config(
-            conn_max_age=600,
-            ssl_require=True
-        )
-    }
-else:
+# Database configuration
+DATABASE_URL = os.getenv('DATABASE_URL', '').strip()
+
+if DATABASE_URL:
+    try:
+        DATABASES = {
+            'default': dj_database_url.config(
+                default=DATABASE_URL,
+                conn_max_age=600,
+                ssl_require=True
+            )
+        }
+    except Exception:
+        # Fallback if dj-database-url still fails to parse
+        DATABASE_URL = None
+
+if not DATABASE_URL:
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
