@@ -1,0 +1,1 @@
+web: gunicorn sih_backend.wsgi

@@ -101,30 +101,35 @@ if DATABASE_URL:
             )
         }
     except Exception as e:
-        # If parsing fails on production, we should know why
-        if not DEBUG:
-            print(f"Error parsing DATABASE_URL: {e}")
+        print(f"Error parsing DATABASE_URL: {e}")
         DATABASE_URL = None
 
 if not DATABASE_URL:
-    # Check if we have individual components
+    # Fallback to individual components or SQLite
     DB_HOST = os.getenv('DB_HOST')
-    if not DB_HOST and not DEBUG:
-        # On production, if we have no URL and no HOST, it will fail
-        # We don't raise error immediately to allow other settings to load, 
-        # but the fallback below will now have a clearer 'localhost' default for debugging
-        pass
-
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': os.getenv('DB_NAME', 'postgres'),
-            'USER': os.getenv('DB_USER', 'postgres'),
-            'PASSWORD': os.getenv('DB_PASSWORD'),
-            'HOST': os.getenv('DB_HOST', 'localhost'),
-            'PORT': os.getenv('DB_PORT', '5432'),
+    
+    if DB_HOST:
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.postgresql',
+                'NAME': os.getenv('DB_NAME', 'postgres'),
+                'USER': os.getenv('DB_USER', 'postgres'),
+                'PASSWORD': os.getenv('DB_PASSWORD'),
+                'HOST': DB_HOST,
+                'PORT': os.getenv('DB_PORT', '5432'),
+            }
         }
-    }
+    elif DEBUG:
+        # DEVELOPMENT FALLBACK: SQLite
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': BASE_DIR / 'db.sqlite3',
+            }
+        }
+    else:
+        # Prevent "localhost" errors on production
+        raise ImproperlyConfigured("DATABASE_URL must be set in production!")
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
