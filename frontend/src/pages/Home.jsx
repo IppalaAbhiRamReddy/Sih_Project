@@ -9,22 +9,22 @@ import {
     Lock
 } from 'lucide-react';
 
+const FeatureCard = ({ icon: Icon, title, check, desc }) => (
+    <div className="bg-white rounded-xl border border-gray-100 p-8 shadow-sm hover:shadow-md transition-shadow">
+        <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center mb-6">
+            <Icon className="w-6 h-6 text-blue-600" />
+        </div>
+        <h3 className="text-lg font-bold text-gray-900 mb-3">{title}</h3>
+        <p className="text-gray-500 text-sm leading-relaxed">{desc}</p>
+    </div>
+);
+
 export default function Home() {
     const navigate = useNavigate();
 
     const handleLogin = () => {
         navigate('/login');
     };
-
-    const FeatureCard = ({ icon: Icon, title, check, desc }) => (
-        <div className="bg-white rounded-xl border border-gray-100 p-8 shadow-sm hover:shadow-md transition-shadow">
-            <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center mb-6">
-                <Icon className="w-6 h-6 text-blue-600" />
-            </div>
-            <h3 className="text-lg font-bold text-gray-900 mb-3">{title}</h3>
-            <p className="text-gray-500 text-sm leading-relaxed">{desc}</p>
-        </div>
-    );
 
     return (
         <div className="min-h-screen bg-white font-sans">

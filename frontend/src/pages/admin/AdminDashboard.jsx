@@ -18,12 +18,12 @@ import {
 } from 'lucide-react';
 import { Edit, Save, X, KeySquare, Menu } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { Modal } from '../../components/ui/Modal';
-import { Input } from '../../components/ui/Input';
-import { Button } from '../../components/ui/Button';
+import { Modal } from '../../components/shared/Modal';
+import { Input } from '../../components/shared/Input';
+import { Button } from '../../components/shared/Button';
 import { adminService } from '../../services/api';
+import { TableSkeleton } from '../../components/shared/TableSkeleton';
 
 export default function AdminDashboard() {
     const navigate = useNavigate();
@@ -46,7 +46,6 @@ export default function AdminDashboard() {
     });
     const [registrationSuccess, setRegistrationSuccess] = useState(null);
     const [submitting, setSubmitting] = useState(false);
-    const [registrationError, setRegistrationError] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
 
     useEffect(() => {
@@ -96,6 +95,7 @@ export default function AdminDashboard() {
 
     const handleRegister = async (e) => {
         e.preventDefault();
+        setSubmitting(true);
         try {
             const result = await adminService.registerHospital(registerFormData);
 
@@ -115,6 +115,8 @@ export default function AdminDashboard() {
             } else {
                 alert('Failed to register hospital: ' + msg);
             }
+        } finally {
+            setSubmitting(false);
         }
     };
 
@@ -251,25 +253,37 @@ export default function AdminDashboard() {
 
                 {/* Stats Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                    <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm transition-shadow hover:shadow-md">
-                        <div className="flex justify-between items-start mb-4">
-                            <div className="p-2 bg-blue-50 rounded-lg">
-                                <Building2 className="w-5 h-5 text-blue-600" />
+                    {loading ? (
+                        Array(2).fill(0).map((_, i) => (
+                            <div key={i} className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm animate-pulse">
+                                <div className="w-10 h-10 bg-gray-100 rounded-lg mb-4" />
+                                <div className="w-16 bg-gray-100 h-8 rounded mb-1" />
+                                <div className="w-32 bg-gray-100 h-4 rounded" />
                             </div>
-                        </div>
-                        <h3 className="text-2xl font-bold text-gray-900 mb-1">{hospitals.length}</h3>
-                        <p className="text-sm text-gray-500">Hospital Authorities</p>
-                    </div>
+                        ))
+                    ) : (
+                        <>
+                            <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm transition-shadow hover:shadow-md">
+                                <div className="flex justify-between items-start mb-4">
+                                    <div className="p-2 bg-blue-50 rounded-lg">
+                                        <Building2 className="w-5 h-5 text-blue-600" />
+                                    </div>
+                                </div>
+                                <h3 className="text-2xl font-bold text-gray-900 mb-1">{hospitals.length}</h3>
+                                <p className="text-sm text-gray-500">Hospital Authorities</p>
+                            </div>
 
-                    <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm transition-shadow hover:shadow-md">
-                        <div className="flex justify-between items-start mb-4">
-                            <div className="p-2 bg-purple-50 rounded-lg">
-                                <Users className="w-5 h-5 text-purple-600" />
+                            <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm transition-shadow hover:shadow-md">
+                                <div className="flex justify-between items-start mb-4">
+                                    <div className="p-2 bg-purple-50 rounded-lg">
+                                        <Users className="w-5 h-5 text-purple-600" />
+                                    </div>
+                                </div>
+                                <h3 className="text-2xl font-bold text-gray-900 mb-1">{systemStats.totalUsers}</h3>
+                                <p className="text-sm text-gray-500">Total System Users</p>
                             </div>
-                        </div>
-                        <h3 className="text-2xl font-bold text-gray-900 mb-1">{systemStats.totalUsers}</h3>
-                        <p className="text-sm text-gray-500">Total System Users</p>
-                    </div>
+                        </>
+                    )}
                 </div>
 
                 {/* Hospital Table Container */}
@@ -288,29 +302,35 @@ export default function AdminDashboard() {
                         </div>
                     </div>
 
-                    <div className="overflow-y-auto flex-1 overflow-x-auto">
-                        <table className="w-full min-w-[600px]">
-                            <thead className="bg-gray-50 text-left sticky top-0 z-10 shadow-sm">
-                                <tr>
-                                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider bg-gray-50">Authority ID</th>
-                                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider bg-gray-50">Hospital Name</th>
-                                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider bg-gray-50 text-right">Registered Date</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                                {filteredHospitals.map((hospital) => (
-                                    <tr
-                                        key={hospital.id}
-                                        onClick={() => setSelectedHospital(hospital)}
-                                        className="hover:bg-blue-50/50 transition-colors cursor-pointer group"
-                                    >
-                                        <td className="px-6 py-4 text-sm font-medium text-gray-900">{hospital.id}</td>
-                                        <td className="px-6 py-4 text-sm text-gray-600 font-medium group-hover:text-blue-700 transition-colors">{hospital.name}</td>
-                                        <td className="px-6 py-4 text-sm text-gray-500 text-right">{hospital.date}</td>
+                    <div className="overflow-y-auto flex-1 overflow-x-auto min-h-0">
+                        {loading ? (
+                            <div className="p-6">
+                                <TableSkeleton rows={8} cols={3} />
+                            </div>
+                        ) : (
+                            <table className="w-full min-w-[600px]">
+                                <thead className="bg-gray-50 text-left sticky top-0 z-10 shadow-sm">
+                                    <tr>
+                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider bg-gray-50">Authority ID</th>
+                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider bg-gray-50">Hospital Name</th>
+                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider bg-gray-50 text-right">Registered Date</th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {filteredHospitals.map((hospital) => (
+                                        <tr
+                                            key={hospital.id}
+                                            onClick={() => setSelectedHospital(hospital)}
+                                            className="hover:bg-blue-50/50 transition-colors cursor-pointer group"
+                                        >
+                                            <td className="px-6 py-4 text-sm font-medium text-gray-900">{hospital.id}</td>
+                                            <td className="px-6 py-4 text-sm text-gray-600 font-medium group-hover:text-blue-700 transition-colors">{hospital.name}</td>
+                                            <td className="px-6 py-4 text-sm text-gray-500 text-right">{hospital.date}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )}
                     </div>
                 </div>
             </main>

@@ -17,7 +17,8 @@ class Hospital(models.Model):
         return self.name
 
 class Department(models.Model):
-    id = models.CharField(primary_key=True, max_length=50)  # Manual ID from frontend
+    uid = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    id = models.CharField(max_length=50, null=True, blank=True)  # Manual ID from frontend
     hospital = models.ForeignKey(Hospital, on_delete=models.CASCADE, related_name='departments')
     name = models.CharField(max_length=255)
     head_name = models.CharField(max_length=255, blank=True, null=True)

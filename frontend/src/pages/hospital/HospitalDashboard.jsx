@@ -52,7 +52,7 @@ export default function HospitalDashboard() {
     const [newStaffData, setNewStaffData] = useState({ name: '', email: '', dept: '' });
 
     // Filters
-    const departmentOptions = departments.map(d => ({ value: d.id, label: d.name }));
+    const departmentOptions = departments.map(d => ({ value: d.uid, label: d.name }));
     const filterDeptOptions = [{ value: 'All', label: 'All Departments' }, ...departmentOptions];
 
     const [deptSearch, setDeptSearch] = useState('');
@@ -85,9 +85,6 @@ export default function HospitalDashboard() {
             s.id.toLowerCase().includes(staffSearch.toLowerCase()))
     );
 
-    useEffect(() => {
-        if (profile?.hospital_id) fetchDashboardData();
-    }, [profile]);
 
     const getDeptName = (deptId) => {
         const dept = departments.find(d => d.id === deptId);
@@ -119,6 +116,10 @@ export default function HospitalDashboard() {
             setLoading(false);
         }
     };
+
+    useEffect(() => {
+        if (profile?.hospital_id) fetchDashboardData();
+    }, [profile]);
 
     const handleLogout = async () => {
         await signOut();

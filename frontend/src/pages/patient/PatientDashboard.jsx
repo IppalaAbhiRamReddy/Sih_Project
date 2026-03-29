@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Activity,
@@ -24,9 +24,14 @@ import {
     ShieldCheck,
     Layout,
     History,
+    Loader2 as Loader,
+    CheckCircle,
+    LogOut,
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { patientService } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import { TableSkeleton } from '../../components/shared/TableSkeleton';
 
 const VisitHistory = React.memo(({ visits, isPrescriptionView = false }) => {
     const data = isPrescriptionView ? (visits ?? []).filter(v => v.prescription) : visits;
@@ -173,7 +178,8 @@ const Vaccinations = React.memo(({ vaccinations }) => {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                     {vaccinations.map((v, i) => {
-                        const isDue = v.nextDue !== '—' && new Date(v.nextDue) < new Date();
+                        const isOverdue = v.nextDue && new Date(v.nextDue) < new Date();
+                        const isUpcoming = v.nextDue && new Date(v.nextDue) >= new Date();
                         return (
                             <tr key={i} className="hover:bg-gray-50/50 transition-colors">
                                 <td className="px-6 py-4 text-sm font-medium text-gray-900">{v.name}</td>
@@ -185,9 +191,15 @@ const Vaccinations = React.memo(({ vaccinations }) => {
                                     )}
                                 </td>
                                 <td className="px-6 py-4">
-                                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${isDue ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
-                                        <CheckCircle className="w-3 h-3" />
-                                        {isDue ? 'Due' : 'Completed'}
+                                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${isOverdue ? 'bg-red-50 text-red-700' : isUpcoming ? 'bg-amber-50 text-amber-700' : 'bg-green-50 text-green-700'}`}>
+                                        {isOverdue ? (
+                                            <AlertTriangle className="w-3 h-3" />
+                                        ) : isUpcoming ? (
+                                            <Calendar className="w-3 h-3 text-amber-600" />
+                                        ) : (
+                                            <CheckCircle className="w-3 h-3 text-green-600" />
+                                        )}
+                                        {isOverdue ? 'Overdue' : isUpcoming ? 'Not Completed' : 'Completed'}
                                     </span>
                                 </td>
                             </tr>
@@ -211,20 +223,8 @@ export default function PatientDashboard() {
     const [activeTab, setActiveTab] = useState('visits');
     const [loadedTabs, setLoadedTabs] = useState(new Set());
 
-    useEffect(() => {
-        if (profile?.id) {
-            // Initial fetch: just Profile + default tab (Visits)
-            fetchPatientInitialData();
-        }
-    }, [profile]);
 
-    useEffect(() => {
-        if (patient?.id && !loadedTabs.has(activeTab)) {
-            fetchTabData(activeTab);
-        }
-    }, [activeTab, patient?.id]);
-
-    const fetchPatientInitialData = async () => {
+    const fetchPatientInitialData = useCallback(async () => {
         try {
             setLoading(true);
             setError(null);
@@ -243,9 +243,9 @@ export default function PatientDashboard() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [profile?.id]);
 
-    const fetchTabData = async (tab) => {
+    const fetchTabData = useCallback(async (tab) => {
         if (!patient?.id) return;
 
         // Map tab IDs to API include keys
@@ -276,23 +276,26 @@ export default function PatientDashboard() {
         } finally {
             setTabLoading(false);
         }
-    };
+    }, [patient?.id, profile?.id]);
+
+    useEffect(() => {
+        if (profile?.id) {
+            fetchPatientInitialData();
+        }
+    }, [profile?.id, fetchPatientInitialData]);
+
+    useEffect(() => {
+        if (patient?.id && !loadedTabs.has(activeTab)) {
+            fetchTabData(activeTab);
+        }
+    }, [activeTab, patient?.id, loadedTabs, fetchTabData]);
 
     const handleLogout = async () => {
         await signOut();
         navigate('/login');
     };
 
-    if (loading) {
-        return (
-            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-                <div className="text-center">
-                    <Loader className="w-8 h-8 text-teal-600 animate-spin mx-auto mb-3" />
-                    <p className="text-gray-500 text-sm">Loading your health records…</p>
-                </div>
-            </div>
-        );
-    }
+    // Logout handler
 
     if (error) {
         return (
@@ -375,38 +378,40 @@ export default function PatientDashboard() {
                     )}
 
                     {/* Alerts / Health Summary */}
-                    <div className="space-y-2">
-                        <div className="bg-red-50 border border-red-100 rounded-xl p-3">
-                            <div className="flex items-center gap-2 mb-2">
-                                <AlertTriangle className="w-4 h-4 text-red-600" />
-                                <h4 className="font-bold text-red-900 text-xs">Known Allergies</h4>
+                    {patient && (
+                        <div className="space-y-2">
+                            <div className="bg-red-50 border border-red-100 rounded-xl p-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <AlertTriangle className="w-4 h-4 text-red-600" />
+                                    <h4 className="font-bold text-red-900 text-xs">Known Allergies</h4>
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                    {patient.allergies?.length > 0 ? (
+                                        patient.allergies.map((a, i) => (
+                                            <span key={i} className="bg-red-100 text-red-700 text-[10px] font-bold px-2 py-0.5 rounded-full">{a}</span>
+                                        ))
+                                    ) : (
+                                        <span className="text-[10px] text-red-400 italic">None Reported</span>
+                                    )}
+                                </div>
                             </div>
-                            <div className="flex flex-wrap gap-1">
-                                {patient.allergies?.length > 0 ? (
-                                    patient.allergies.map((a, i) => (
-                                        <span key={i} className="bg-red-100 text-red-700 text-[10px] font-bold px-2 py-0.5 rounded-full">{a}</span>
-                                    ))
-                                ) : (
-                                    <span className="text-[10px] text-red-400 italic">None Reported</span>
-                                )}
+                            <div className="bg-orange-50 border border-orange-100 rounded-xl p-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <HeartPulse className="w-4 h-4 text-orange-600" />
+                                    <h4 className="font-bold text-orange-900 text-xs">Chronic Conditions</h4>
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                    {patient.chronicConditions?.length > 0 ? (
+                                        patient.chronicConditions.map((c, i) => (
+                                            <span key={i} className="bg-orange-100 text-orange-700 text-[10px] font-bold px-2 py-0.5 rounded-full">{c}</span>
+                                        ))
+                                    ) : (
+                                        <span className="text-[10px] text-orange-400 italic">None Reported</span>
+                                    )}
+                                </div>
                             </div>
                         </div>
-                        <div className="bg-orange-50 border border-orange-100 rounded-xl p-3">
-                            <div className="flex items-center gap-2 mb-2">
-                                <HeartPulse className="w-4 h-4 text-orange-600" />
-                                <h4 className="font-bold text-orange-900 text-xs">Chronic Conditions</h4>
-                            </div>
-                            <div className="flex flex-wrap gap-1">
-                                {patient.chronicConditions?.length > 0 ? (
-                                    patient.chronicConditions.map((c, i) => (
-                                        <span key={i} className="bg-orange-100 text-orange-700 text-[10px] font-bold px-2 py-0.5 rounded-full">{c}</span>
-                                    ))
-                                ) : (
-                                    <span className="text-[10px] text-orange-400 italic">None Reported</span>
-                                )}
-                            </div>
-                        </div>
-                    </div>
+                    )}
 
                     {/* Read-only notice */}
                     <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
@@ -529,10 +534,28 @@ export default function PatientDashboard() {
 
                 {/* Tab Content */}
                 <div className="min-h-[400px]">
-                    {activeTab === 'visits' && <VisitHistory visits={patient?.visits} />}
-                    {activeTab === 'prescriptions' && <VisitHistory visits={patient?.visits} isPrescriptionView />}
-                    {activeTab === 'labs' && <LabReports labReports={patient?.labReports} />}
-                    {activeTab === 'vaccinations' && <Vaccinations vaccinations={patient?.vaccinations} />}
+                    {loading ? (
+                        <div className="space-y-4">
+                            {activeTab === 'visits' || activeTab === 'prescriptions' ? (
+                                Array(3).fill(0).map((_, i) => (
+                                    <div key={i} className="bg-white border border-gray-200 rounded-xl p-6 h-32 animate-pulse" />
+                                ))
+                            ) : (
+                                <TableSkeleton rows={8} cols={5} />
+                            )}
+                        </div>
+                    ) : (
+                        <>
+                            {activeTab === 'visits' && <VisitHistory visits={patient?.visits} />}
+                            {activeTab === 'prescriptions' && <VisitHistory visits={patient?.visits} isPrescriptionView />}
+                            {activeTab === 'labs' && (
+                                tabLoading && !patient?.labReports ? <TableSkeleton rows={8} cols={5} /> : <LabReports labReports={patient?.labReports} />
+                            )}
+                            {activeTab === 'vaccinations' && (
+                                tabLoading && !patient?.vaccinations ? <TableSkeleton rows={8} cols={4} /> : <Vaccinations vaccinations={patient?.vaccinations} />
+                            )}
+                        </>
+                    )}
                 </div>
             </main>
         </div>

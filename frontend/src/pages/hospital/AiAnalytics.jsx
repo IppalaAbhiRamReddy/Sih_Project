@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
     TrendingUp,
     Activity,
@@ -18,7 +18,7 @@ import {
     Cell,
     Legend
 } from 'recharts';
-import { Select } from '../../components/ui/Select';
+import { Select } from '../../components/shared/Select';
 import { hospitalService } from '../../services/api';
 import { Loader } from 'lucide-react';
 
@@ -45,9 +45,9 @@ export default function AiAnalytics() {
 
     React.useEffect(() => {
         fetchAnalytics();
-    }, [timeRange, selectedDept]);
+    }, [fetchAnalytics]);
 
-    const fetchAnalytics = async () => {
+    const fetchAnalytics = useCallback(async () => {
         try {
             setLoading(true);
 
@@ -76,7 +76,7 @@ export default function AiAnalytics() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [timeRange, selectedDept, deptOptions.length]);
 
     return (
         <div className={`p-8 space-y-8 transition-opacity duration-300 ${loading ? 'opacity-60 pointer-events-none' : 'opacity-100'}`}>
@@ -110,7 +110,7 @@ export default function AiAnalytics() {
                     </div>
 
                     <div className="h-80 w-full relative">
-                        <ResponsiveContainer width="99%" height="100%">
+                        <ResponsiveContainer width="99%" height="100%" minWidth={0}>
                             <LineChart data={loadForecastData}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
                                 <XAxis
@@ -215,7 +215,7 @@ export default function AiAnalytics() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
                         <div className="flex flex-col items-center">
                             <div className="h-64 w-full relative">
-                                <ResponsiveContainer width="99%" height="100%">
+                                <ResponsiveContainer width="99%" height="100%" minWidth={0}>
                                     <PieChart>
                                         <Pie
                                             data={diseaseData}

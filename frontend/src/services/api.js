@@ -1,21 +1,36 @@
-// services/api.js
-// Primary data operations go through Django REST Framework (DRF).
-// Supabase is used exclusively for file storage (Storage buckets).
+/**
+ * API Service Layer
+ *
+ * Centralized coordination for all network requests.
+ * Logic is split into specialized modules: auth, patient, doctor, staff, hospital, and admin.
+ * Primary data operations go through Django REST Framework (DRF).
+ * Supabase is used exclusively for file storage (Storage buckets).
+ */
 
 import { supabase } from "../lib/supabase";
 
+/**
+ * Derives the base URL for the backend API.
+ * Defaults to localhost if not provided in environment.
+ */
 const getBaseUrl = () => {
   let url = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
   return url.endsWith("/") ? url.slice(0, -1) : url;
 };
 const DRF_BASE_URL = getBaseUrl();
+const ensureArray = (data) => {
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data.results)) return data.results;
+  return [];
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HELPERS
+// AUTHENTICATION HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Refreshes the access token using the refresh token.
+ * Refreshes the JWT access token using the stored refresh token.
+ * Triggers a logout if the refresh token is invalid or expired.
  */
 async function refreshAccessToken() {
   const refreshToken = localStorage.getItem("refresh_token");
@@ -28,7 +43,6 @@ async function refreshAccessToken() {
   });
 
   if (!res.ok) {
-    // If refresh fails, clear all tokens and force logout
     authService.logout();
     window.location.href = "/login?session=expired";
     throw new Error("Session expired. Please login again.");
@@ -41,10 +55,9 @@ async function refreshAccessToken() {
 }
 
 /**
- * Universal fetch wrapper that handles:
- * 1. Automatic Bearer token inclusion
- * 2. Automatic 401 intercept & token refresh
- * 3. One-time retry after refresh
+ * Universal fetch wrapper with automatic Authorization headers and 401 retry logic.
+ * @param {string} url - The target endpoint.
+ * @param {object} options - Fetch options (method, headers, body).
  */
 async function fetchWithAuth(url, options = {}) {
   let token = localStorage.getItem("access_token");
@@ -56,17 +69,11 @@ async function fetchWithAuth(url, options = {}) {
 
   let res = await fetch(url, { ...options, headers });
 
-  // If 401, try to refresh once
+  // Handle expired tokens by attempting a one-time refresh
   if (res.status === 401) {
-    try {
-      token = await refreshAccessToken();
-      // Retry with new token
-      headers["Authorization"] = `Bearer ${token}`;
-      res = await fetch(url, { ...options, headers });
-    } catch (err) {
-      // Refresh failed, error already handled in refreshAccessToken
-      throw err;
-    }
+    token = await refreshAccessToken();
+    headers["Authorization"] = `Bearer ${token}`;
+    res = await fetch(url, { ...options, headers });
   }
 
   return res;
@@ -76,7 +83,9 @@ async function fetchWithAuth(url, options = {}) {
 // AUTH SERVICE
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Service for handling user login, logout, and password resets. */
 export const authService = {
+  /** Retrieves the current user profile from local storage. */
   getCurrentUser: () => {
     try {
       return JSON.parse(localStorage.getItem("user"));
@@ -85,6 +94,7 @@ export const authService = {
     }
   },
 
+  /** Authenticates user and persists credentials to local storage. */
   login: async (email, password) => {
     const res = await fetch(`${DRF_BASE_URL}/auth/login/`, {
       method: "POST",
@@ -94,7 +104,6 @@ export const authService = {
     const json = await res.json();
     if (!res.ok) throw new Error(json.error ?? "Login failed");
 
-    // Store tokens and user in localStorage
     localStorage.setItem("access_token", json.access);
     localStorage.setItem("refresh_token", json.refresh);
     localStorage.setItem("user", JSON.stringify(json.user));
@@ -102,12 +111,14 @@ export const authService = {
     return json;
   },
 
+  /** Clears local session storage. */
   logout: () => {
     localStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
     localStorage.removeItem("user");
   },
 
+  /** Sends a password reset email. */
   requestPasswordReset: async (email) => {
     const res = await fetch(`${DRF_BASE_URL}/auth/password-reset/`, {
       method: "POST",
@@ -119,6 +130,7 @@ export const authService = {
     return json;
   },
 
+  /** Submits the new password using the reset token. */
   resetPasswordConfirm: async (uidb64, token, newPassword) => {
     const res = await fetch(`${DRF_BASE_URL}/auth/password-reset-confirm/`, {
       method: "POST",
@@ -152,7 +164,11 @@ export const patientService = {
       throw new Error("Failed to fetch patient details");
     }
     const data = await res.json();
+    return patientService._mapPatientResult(data);
+  },
 
+  /** INTERNAL: Map raw medical history response to frontend-friendly model. */
+  _mapPatientResult: (data) => {
     const fmt = (d) =>
       d
         ? new Date(d).toLocaleDateString("en-IN", {
@@ -185,6 +201,7 @@ export const patientService = {
 
     if (data.visits) {
       result.visits = data.visits.map((v) => ({
+        rawId: v.id,
         id: v.id.slice(0, 8).toUpperCase(),
         date: fmt(v.visit_date),
         doctor: v.doctor_name ?? "Unknown Doctor",
@@ -193,6 +210,7 @@ export const patientService = {
         diagnosis: v.diagnosis,
         prescription: v.prescription_text ?? "",
         notes: v.clinical_notes ?? "",
+        nextVisitDate: v.next_visit_date || "",
       }));
     }
 
@@ -219,19 +237,18 @@ export const patientService = {
     return result;
   },
 
-  /**
-   * Fetch patient details by UUID (used in PatientDashboard where we have profile.id).
-   */
+  /** Fetch patient details by UUID. */
   getPatientDetailsByUUID: async (
     uuid,
     include = "profile,visits,lab_reports,vaccinations",
   ) => {
+    // Optimization: Directly fetch via medical_history using patient ID (UUID)
     const res = await fetchWithAuth(
-      `${DRF_BASE_URL}/hospitals/profiles/${uuid}/`,
+      `${DRF_BASE_URL}/hospitals/profiles/medical_history/?patient_id=${uuid}&include=${include}`,
     );
     if (!res.ok) throw new Error("Patient not found");
-    const patient = await res.json();
-    return patientService.getPatientDetails(patient.health_id, include);
+    const data = await res.json();
+    return patientService._mapPatientResult(data);
   },
 
   /** Register a new patient (calls Django DRF). */
@@ -276,56 +293,53 @@ export const patientService = {
 
   /** Update a patient's contact details and optional medical fields. */
   updatePatient: async (patientUUID, updateData) => {
-    const { error } = await supabase
-      .from("profiles")
-      .update({
-        full_name: updateData.name,
-        age: parseInt(updateData.age, 10),
-        gender: updateData.gender,
-        blood_group: updateData.bloodGroup,
-        contact_number: updateData.contact,
-        email: updateData.email,
-        address: updateData.address,
-        emergency_contact: updateData.emergencyContact,
-        allergies: updateData.allergies ?? [],
-        chronic_conditions: updateData.chronicConditions ?? [],
-      })
-      .eq("id", patientUUID);
-    if (error) throw error;
+    const res = await fetchWithAuth(
+      `${DRF_BASE_URL}/hospitals/profiles/${patientUUID}/`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          full_name: updateData.name,
+          age: parseInt(updateData.age, 10),
+          gender: updateData.gender,
+          blood_group: updateData.bloodGroup,
+          contact_number: updateData.contact,
+          email: updateData.email,
+          address: updateData.address,
+          emergency_contact: updateData.emergencyContact,
+          allergies: updateData.allergies ?? [],
+          chronic_conditions: updateData.chronicConditions ?? [],
+        }),
+      },
+    );
+    if (!res.ok) throw new Error("Failed to update patient details");
   },
 
-  /** Insert/replace all vaccination records for a patient. */
+  /** Bulk update vaccination records (Highly Optimized). */
   updateVaccinations: async (patientUUID, vaccinations) => {
-    // 1. Fetch current vaccinations to delete them (simulating the sync/replace behavior)
-    // In a better API, we'd have a bulk update endpoint, but for now we follow the existing pattern
-    const listRes = await fetchWithAuth(
-      `${DRF_BASE_URL}/clinical/vaccinations/?patient=${patientUUID}`,
-    );
-    if (listRes.ok) {
-      const existing = await listRes.json();
-      for (const v of existing) {
-        await fetchWithAuth(`${DRF_BASE_URL}/clinical/vaccinations/${v.id}/`, {
-          method: "DELETE",
-        });
-      }
-    }
+    if (!vaccinations) return;
 
-    if (!vaccinations || vaccinations.length === 0) return;
-
-    // 2. Insert new records
-    for (const v of vaccinations) {
-      if (!v.name || !v.name.trim()) continue;
-      await fetchWithAuth(`${DRF_BASE_URL}/clinical/vaccinations/`, {
+    // Fix: Using the new bulk API to avoid network waterfall
+    const res = await fetchWithAuth(
+      `${DRF_BASE_URL}/clinical/vaccinations/bulk_update/`,
+      {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           patient: patientUUID,
-          vaccine_name: v.name.trim(),
-          administered_date: v.date || null,
-          next_due_date: v.nextDue || null,
+          vaccinations: vaccinations
+            .filter((v) => v.name && v.name.trim())
+            .map((v) => ({
+              vaccine_name: v.name.trim(),
+              administered_date: v.date || null,
+              next_due_date: v.nextDue || null,
+            })),
         }),
-      });
-    }
+      },
+    );
+
+    if (!res.ok) throw new Error("Failed to update vaccinations in bulk");
+    return res.json();
   },
 };
 
@@ -343,61 +357,23 @@ export const doctorService = {
     nextVisit,
     doctorId,
     hospitalId,
-    labReportFile,
+    labReportFiles, // New: Array of files
   }) => {
-    const now = new Date().toISOString();
+    // 1. Upload and link if multiple files provided
+    await doctorService._uploadAndLinkLabReports({
+      patientId,
+      hospitalId,
+      files: labReportFiles,
+    });
 
-    // 1. Handle Optional Lab Report Upload to Supabase Storage
-    let labPublicUrl = null;
-    if (labReportFile) {
-      const fileExt = labReportFile.name.split(".").pop();
-      const fileName = `${patientId}/${Date.now()}.${fileExt}`;
-      const { error: uploadError } = await supabase.storage
-        .from("lab-reports")
-        .upload(fileName, labReportFile);
-
-      if (uploadError) {
-        if (uploadError.message?.includes("Bucket not found")) {
-          throw new Error(
-            "Storage Bucket 'lab-reports' not found. Please create it in your Supabase console with public access.",
-          );
-        }
-        throw uploadError;
-      }
-
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from("lab-reports").getPublicUrl(fileName);
-      labPublicUrl = publicUrl;
-    }
-
-    // 2. DRF: Create Lab Report record if file was uploaded
-    if (labPublicUrl) {
-      const labRes = await fetchWithAuth(
-        `${DRF_BASE_URL}/clinical/lab-reports/`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            patient: patientId,
-            hospital: hospitalId,
-            report_name: labReportFile.name,
-            file_url: labPublicUrl,
-            status: "Normal",
-          }),
-        },
-      );
-      if (!labRes.ok) throw new Error("Failed to save lab report record");
-    }
-
-    // 3. DRF: Insert Visit record
+    // 2. DRF: Insert Visit record
     const visitRes = await fetchWithAuth(`${DRF_BASE_URL}/clinical/visits/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         patient: patientId,
         doctor: doctorId,
-        hospital: hospitalId,
+        hospital: hospitalId || null,
         diagnosis,
         prescription_text: prescription,
         clinical_notes: notes,
@@ -405,6 +381,95 @@ export const doctorService = {
       }),
     });
     if (!visitRes.ok) throw new Error("Failed to save visit record");
+  },
+
+  /** Update an existing visit record (only allowed for same-day visits). */
+  updateVisit: async (
+    visitId,
+    {
+      diagnosis,
+      prescription,
+      notes,
+      nextVisit,
+      patientId,
+      hospitalId,
+      labReportFiles,
+    },
+  ) => {
+    // 1. Optional: Upload more reports even during edit
+    if (labReportFiles && labReportFiles.length > 0) {
+      await doctorService._uploadAndLinkLabReports({
+        patientId,
+        hospitalId,
+        files: labReportFiles,
+      });
+    }
+
+    // 2. Perform the update
+    const res = await fetchWithAuth(
+      `${DRF_BASE_URL}/clinical/visits/${visitId}/`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          diagnosis,
+          prescription_text: prescription,
+          clinical_notes: notes,
+          next_visit_date: nextVisit || null,
+        }),
+      },
+    );
+    if (!res.ok) {
+      const json = await res.json();
+      throw new Error(
+        json.non_field_errors?.[0] ||
+          json.error ||
+          "Failed to update visit record",
+      );
+    }
+  },
+
+  /** INTERNAL: Shared logic for multi-file upload & DB linking. */
+  _uploadAndLinkLabReports: async ({ patientId, hospitalId, files }) => {
+    if (!files || files.length === 0) return;
+
+    for (const file of files) {
+      const fileExt = file.name.split(".").pop();
+      const fileName = `${patientId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from("lab-reports")
+        .upload(fileName, file, { upsert: true });
+
+      if (uploadError) {
+        console.error("SUPABASE UPLOAD ERROR:", uploadError);
+        throw new Error(
+          `Upload failed for ${file.name}: ${uploadError.message}`,
+        );
+      }
+
+      const { data: urlData } = supabase.storage
+        .from("lab-reports")
+        .getPublicUrl(fileName);
+      const publicUrl = urlData.publicUrl;
+
+      // Create record in DB
+      const labRes = await fetchWithAuth(
+        `${DRF_BASE_URL}/clinical/lab-reports/`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            patient: patientId,
+            hospital: hospitalId || null,
+            report_name: file.name,
+            file_url: publicUrl,
+            status: "Normal",
+          }),
+        },
+      );
+      if (!labRes.ok) throw new Error(`Failed to save record for ${file.name}`);
+    }
   },
 
   /** Get stats for the logged-in doctor. */
@@ -422,7 +487,7 @@ export const doctorService = {
       `${DRF_BASE_URL}/clinical/visits/recent_visits/?doctor_id=${doctorId}`,
     );
     if (!res.ok) throw new Error("Failed to fetch recent visits");
-    const data = await res.json();
+    const data = ensureArray(await res.json());
 
     const fmt = (d) =>
       d
@@ -434,9 +499,10 @@ export const doctorService = {
         : "—";
 
     return data.map((v) => ({
+      rawId: v.id,
       id: v.id.slice(0, 8).toUpperCase(),
       date: fmt(v.visit_date),
-      patientName: v.patient_details?.full_name ?? "Unknown", // Need to ensure patient_details in serializer or just use profile
+      patientName: v.patient_details?.full_name ?? "Unknown",
       patientId: v.patient_details?.health_id ?? "—",
       patientGender: v.patient_details?.gender ?? "—",
       patientAge: v.patient_details?.age ?? "—",
@@ -451,13 +517,13 @@ export const doctorService = {
 
 export const staffService = {
   /** Get patients registered at this hospital (all staff). */
-  getRecentRegistrations: async (staffId, hospitalId) => {
+  getRecentRegistrations: async (staffId) => {
     // We filter by hospital in the DRF ProfilesViewSet
     const res = await fetchWithAuth(
       `${DRF_BASE_URL}/hospitals/profiles/?role=patient`,
     );
     if (!res.ok) throw new Error("Failed to fetch registrations");
-    const data = await res.json();
+    const data = ensureArray(await res.json());
 
     const fmt = (d) =>
       d
@@ -486,17 +552,11 @@ export const staffService = {
     }));
   },
 
-  /** Count registrations for stats cards.
-   *  today/week/month = hospital-wide; total = this staff member's own count. */
   /** Count registrations for stats. */
-  getStats: async (_staffId, _hospitalId) => {
-    // We already have a dashboard_stats endpoint in HospitalViewSet
-    // but the Staff Dashboard might need more specific counts if we want staff-specific total
-    // Using systems_stats for now or updating it later
-    const res = await fetchWithAuth(`${DRF_BASE_URL}/hospitals/system_stats/`);
+  getStats: async () => {
+    const res = await fetchWithAuth(`${DRF_BASE_URL}/hospitals/staff_stats/`);
     if (!res.ok) throw new Error("Failed to fetch staff stats");
-    const json = await res.json();
-    return json; // Note: may need field mapping if the staff dashboard expects today/week/month
+    return res.json();
   },
 };
 
@@ -506,23 +566,14 @@ export const staffService = {
 
 export const hospitalService = {
   /** Department list for this hospital — uses Django DRF. */
-  getDepartments: async (_hospitalId) => {
+  getDepartments: async () => {
     const res = await fetchWithAuth(`${DRF_BASE_URL}/hospitals/departments/`);
     if (!res.ok) throw new Error("Failed to fetch departments");
-    const data = await res.json();
-
-    return data.map((d) => ({
-      id: d.id,
-      name: d.name,
-      head: d.head_name ?? "—",
-      doctors: d.doctor_count,
-      staff: d.staff_count,
-      status: d.status,
-    }));
+    return ensureArray(await res.json());
   },
 
   /** Add a new department — uses Django DRF. */
-  addDepartment: async (deptData, _hospitalId) => {
+  addDepartment: async (deptData) => {
     const res = await fetchWithAuth(`${DRF_BASE_URL}/hospitals/departments/`, {
       method: "POST",
       headers: {
@@ -531,9 +582,9 @@ export const hospitalService = {
       body: JSON.stringify({
         id: deptData.id,
         name: deptData.name,
-        head_name: deptData.head || null,
-        doctor_count: parseInt(deptData.doctors, 10) || 0,
-        staff_count: parseInt(deptData.staff, 10) || 0,
+        head: deptData.head || null,
+        doctors: parseInt(deptData.doctors, 10) || 0,
+        staff: parseInt(deptData.staff, 10) || 0,
       }),
     });
     if (!res.ok) {
@@ -546,12 +597,12 @@ export const hospitalService = {
   },
 
   /** List doctors for this hospital (calls Django DRF). */
-  getDoctors: async (_hospitalId) => {
+  getDoctors: async () => {
     const res = await fetchWithAuth(
       `${DRF_BASE_URL}/hospitals/profiles/?role=doctor`,
     );
     if (!res.ok) throw new Error("Failed to fetch doctors");
-    const data = await res.json();
+    const data = ensureArray(await res.json());
 
     const fmt = (d) =>
       d
@@ -567,16 +618,17 @@ export const hospitalService = {
       .map((d) => ({
         id: d.id,
         name: d.full_name ?? "—",
-        dept: d.department ?? "—",
+        dept: d.department_name ?? d.department ?? "—",
         spec: d.specialization ?? "—",
         join: fmt(d.join_date),
         active: d.is_active,
         email: d.email,
+        dept_id: d.department_id || "",
       }));
   },
 
   /** Register a new doctor (calls Django DRF). */
-  registerDoctor: async (doctorData, _hospitalId) => {
+  registerDoctor: async (doctorData) => {
     const res = await fetchWithAuth(
       `${DRF_BASE_URL}/hospitals/register-user/`,
       {
@@ -597,7 +649,7 @@ export const hospitalService = {
   },
 
   /** Register a new staff member (calls Django DRF). */
-  registerStaff: async (staffData, _hospitalId) => {
+  registerStaff: async (staffData) => {
     const res = await fetchWithAuth(
       `${DRF_BASE_URL}/hospitals/register-user/`,
       {
@@ -646,12 +698,12 @@ export const hospitalService = {
   },
 
   /** List staff for this hospital (calls Django DRF). */
-  getStaff: async (_hospitalId) => {
+  getStaff: async () => {
     const res = await fetchWithAuth(
       `${DRF_BASE_URL}/hospitals/profiles/?role=staff`,
     );
     if (!res.ok) throw new Error("Failed to fetch staff");
-    const data = await res.json();
+    const data = ensureArray(await res.json());
 
     const fmt = (d) =>
       d
@@ -667,10 +719,11 @@ export const hospitalService = {
       .map((s) => ({
         id: s.id,
         name: s.full_name ?? "—",
-        dept: s.department ?? "—",
+        dept: s.department_name ?? s.department ?? "—",
         join: fmt(s.join_date),
         active: s.is_active,
         email: s.email,
+        dept_id: s.department_id || "",
       }));
   },
 
@@ -702,7 +755,7 @@ export const hospitalService = {
   },
 
   /** Stats card counts (calls Django). */
-  getStats: async (_hospitalId) => {
+  getStats: async () => {
     const res = await fetchWithAuth(
       `${DRF_BASE_URL}/hospitals/dashboard_stats/`,
     );
@@ -737,7 +790,7 @@ export const adminService = {
   getHospitals: async () => {
     const res = await fetchWithAuth(`${DRF_BASE_URL}/hospitals/`);
     if (!res.ok) throw new Error("Failed to fetch hospitals from DRF");
-    return res.json();
+    return ensureArray(await res.json());
   },
 
   registerHospital: async (hospitalData) => {

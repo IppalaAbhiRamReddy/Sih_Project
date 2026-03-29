@@ -1,3 +1,8 @@
+"""
+Views for the Hospitals app.
+Handles Hospital Authority management, Department creation, User (Doctor/Staff) registration,
+and Patient registration by authorized workforce members.
+"""
 import uuid
 import secrets
 import string
@@ -6,20 +11,27 @@ from django.db import transaction
 from rest_framework import viewsets, status, views, mixins, serializers
 from rest_framework.response import Response
 from rest_framework.decorators import action
+from django.db.models import Count, Q, Subquery, OuterRef
 from .models import Hospital, Department
 from .serializers import HospitalSerializer, DepartmentSerializer
 from users.models import Profile
-from users.serializers import ProfileSerializer
+from users.serializers import ProfileSerializer, UserProfileSerializer
 from rest_framework import permissions
 from clinical.models import Visit, LabReport, Vaccination
 from clinical.serializers import (
     DetailedVisitSerializer, LabReportSerializer, VaccinationSerializer
 )
+from django.utils import timezone
+from datetime import timedelta
 
 class HospitalViewSet(mixins.ListModelMixin, 
                      mixins.RetrieveModelMixin, 
                      mixins.UpdateModelMixin,
                      viewsets.GenericViewSet):
+    """
+    Manages existing Hospital records. 
+    Includes custom actions for system-wide and dashboard-specific statistics.
+    """
 
     queryset = Hospital.objects.all().order_by('-created_at')
     serializer_class = HospitalSerializer
@@ -54,17 +66,20 @@ class HospitalViewSet(mixins.ListModelMixin,
     @action(detail=False, methods=['get'])
     def system_stats(self, request):
         hospitals_count = Hospital.objects.count()
-        total_users = Profile.objects.exclude(role='admin').count()
-        doctors = Profile.objects.filter(role='doctor').count()
-        staff = Profile.objects.filter(role='staff').count()
-        patients = Profile.objects.filter(role='patient').count()
+        # Consolidate multiple Profile count() calls into a single aggregate query (SQL efficiency)
+        stats = Profile.objects.exclude(role='admin').aggregate(
+            totalUsers=Count('id'),
+            doctors=Count('id', filter=Q(role='doctor')),
+            staff=Count('id', filter=Q(role='staff')),
+            patients=Count('id', filter=Q(role='patient'))
+        )
 
         return Response({
             'hospitals': hospitals_count,
-            'totalUsers': total_users,
-            'doctors': doctors,
-            'staff': staff,
-            'patients': patients
+            'totalUsers': stats['totalUsers'],
+            'doctors': stats['doctors'],
+            'staff': stats['staff'],
+            'patients': stats['patients']
         })
 
     @action(detail=False, methods=['get'])
@@ -75,9 +90,14 @@ class HospitalViewSet(mixins.ListModelMixin,
             if not hospital:
                 return Response({'error': 'No hospital associated with this user.'}, status=status.HTTP_400_BAD_REQUEST)
             
-            doctors_count = Profile.objects.filter(hospital=hospital, role='doctor', is_active=True).count()
-            staff_count = Profile.objects.filter(hospital=hospital, role='staff', is_active=True).count()
-            # Active today should be sum of active doctors and staff
+            # Consolidate multiple count() calls into a single aggregate query (SQL efficiency)
+            stats = Profile.objects.filter(hospital=hospital, is_active=True).aggregate(
+                doctors_count=Count('id', filter=Q(role='doctor')),
+                staff_count=Count('id', filter=Q(role='staff'))
+            )
+            
+            doctors_count = stats['doctors_count']
+            staff_count = stats['staff_count']
             active_count = doctors_count + staff_count
 
             return Response({
@@ -88,7 +108,35 @@ class HospitalViewSet(mixins.ListModelMixin,
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+    @action(detail=False, methods=['get'])
+    def staff_stats(self, request):
+        try:
+            profile = request.user.profile
+            hospital = profile.hospital
+            if not hospital:
+                return Response({'error': 'No hospital associated.'}, status=400)
+            
+            now = timezone.now()
+            today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            week_ago = now - timedelta(days=7)
+            month_ago = now - timedelta(days=30)
+            
+            # Count patient registrations at this hospital
+            stats = Profile.objects.filter(hospital=hospital, role='patient').aggregate(
+                today=Count('id', filter=Q(created_at__gte=today_start)),
+                week=Count('id', filter=Q(created_at__gte=week_ago)),
+                month=Count('id', filter=Q(created_at__gte=month_ago)),
+                total=Count('id')
+            )
+            return Response(stats)
+        except Exception as e:
+            return Response({'error': str(e)}, status=400)
+
 class HospitalRegistrationView(views.APIView):
+    """
+    Creates a new Hospital account along with a Hospital Admin user and Profile.
+    Generates a temporary password for the new admin.
+    """
     def post(self, request):
         data = request.data
         email = data.get('email')
@@ -142,16 +190,24 @@ class HospitalRegistrationView(views.APIView):
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 class ProfileViewSet(viewsets.ModelViewSet):
-    serializer_class = ProfileSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    """
+    Manages User Profiles (Doctors, Staff, Patients).
+    Filters results based on the logged-in user's role and hospital association.
+    """
+    def get_serializer_class(self):
+        # Use a lightweight serializer for bulk listings to reduce payload size.
+        if self.action == 'list':
+            return UserProfileSerializer
+        return ProfileSerializer
 
     def get_queryset(self):
         try:
             profile = self.request.user.profile
+            base_qs = Profile.objects.all().select_related('user', 'hospital', 'department')
             if profile.role == 'admin':
-                return Profile.objects.all()
+                return base_qs
             if profile.hospital:
-                qs = Profile.objects.filter(hospital=profile.hospital)
+                qs = base_qs.filter(hospital=profile.hospital)
                 role = self.request.query_params.get('role')
                 if role:
                     qs = qs.filter(role=role)
@@ -162,13 +218,17 @@ class ProfileViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def medical_history(self, request):
         health_id = request.query_params.get('health_id')
+        patient_id = request.query_params.get('patient_id')
         include = request.query_params.get('include', 'profile,visits,lab_reports,vaccinations').split(',')
         
-        if not health_id:
-            return Response({'error': 'health_id is required'}, status=400)
+        if not health_id and not patient_id:
+            return Response({'error': 'health_id or patient_id is required'}, status=400)
             
         try:
-            patient = Profile.objects.get(health_id=health_id, role='patient')
+            if health_id:
+                patient = Profile.objects.get(health_id=health_id, role='patient')
+            else:
+                patient = Profile.objects.get(id=patient_id, role='patient')
             response_data = {}
 
             if 'profile' in include:
@@ -219,20 +279,45 @@ class ProfileViewSet(viewsets.ModelViewSet):
                     user.save(update_fields=['is_active'])
 
 class DepartmentViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for Hospital Departments.
+    Automatically restricts access to departments within the user's specific hospital.
+    """
     serializer_class = DepartmentSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        # Only show departments for the hospital associated with the logged-in user
-        try:
-            profile = self.request.user.profile
-            if profile.role == 'admin':
-                return Department.objects.all()
-            if profile.hospital:
-                return Department.objects.filter(hospital=profile.hospital)
-            return Department.objects.none()
-        except:
-            return Department.objects.none()
+        # Using Subqueries to fetch counts avoids complex JOIN/GROUP BY errors in PostgreSQL.
+        profile = self.request.user.profile
+        
+        # Subquery for doctor count
+        doctors_sq = Profile.objects.filter(
+            department=OuterRef('pk'),
+            role='doctor',
+            is_active=True
+        ).values('department').annotate(count=Count('id')).values('count')
+        
+        # Subquery for staff count
+        staff_sq = Profile.objects.filter(
+            department=OuterRef('pk'),
+            role='staff',
+            is_active=True
+        ).values('department').annotate(count=Count('id')).values('count')
+        
+        # We handle nulls from Subquery (0 when no profiles found)
+        from django.db.models.functions import Coalesce
+        from django.db.models import Value
+        
+        base_qs = Department.objects.all().order_by('created_at').annotate(
+            doctors=Coalesce(Subquery(doctors_sq), Value(0)),
+            staff=Coalesce(Subquery(staff_sq), Value(0))
+        )
+        
+        if profile.role == 'admin':
+            return base_qs
+        if profile.hospital:
+            return base_qs.filter(hospital=profile.hospital)
+        return Department.objects.none()
 
     def perform_create(self, serializer):
         # Automatically associate the department with the user's hospital
@@ -246,6 +331,10 @@ class DepartmentViewSet(viewsets.ModelViewSet):
             raise serializers.ValidationError({"error": "User profile not found."})
 
 class UserRegistrationView(views.APIView):
+    """
+    Enables Hospital Admins to register Doctors and Staff members.
+    Automates Django User creation and Profile linking.
+    """
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
@@ -338,6 +427,11 @@ class DeleteUserView(views.APIView):
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 class PatientRegistrationView(views.APIView):
+    """
+    Enables Doctors, Staff, and Hospital Admins to register new Patients.
+    Generates a unique Health ID and creates a secure patient account.
+    Supports initial vaccination record syncing during registration.
+    """
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
@@ -392,15 +486,25 @@ class PatientRegistrationView(views.APIView):
                 vaccinations_data = data.get('vaccinations', [])
                 if isinstance(vaccinations_data, list) and vaccinations_data:
                     from clinical.models import Vaccination
-                    vaccinations_to_create = [
-                        Vaccination(
-                            patient=profile,
-                            vaccine_name=v.get('name'),
-                            administered_date=v.get('date') or None,
-                            next_due_date=v.get('nextDue') or None
-                        )
-                        for v in vaccinations_data if v.get('name')
-                    ]
+                    from clinical.serializers import VaccinationSerializer
+                    
+                    vaccinations_to_create = []
+                    for v in vaccinations_data:
+                        if not v.get('name'):
+                            continue
+                            
+                        # Map frontend keys to internal names and include profile ID
+                        ser_data = {
+                            'vaccine_name': v.get('name'),
+                            'administered_date': v.get('date') or None,
+                            'next_due_date': v.get('nextDue') or None,
+                            'patient': str(profile.id)
+                        }
+                        
+                        ser = VaccinationSerializer(data=ser_data)
+                        ser.is_valid(raise_exception=True)
+                        vaccinations_to_create.append(Vaccination(**ser.validated_data))
+                        
                     if vaccinations_to_create:
                         Vaccination.objects.bulk_create(vaccinations_to_create)
                 

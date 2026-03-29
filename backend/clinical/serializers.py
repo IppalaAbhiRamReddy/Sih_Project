@@ -4,14 +4,30 @@ from .models import Visit, Prescription, LabReport, Vaccination
 from users.models import Profile
 
 class VisitSerializer(serializers.ModelSerializer):
+    lab_report_file = serializers.FileField(required=False, write_only=True)
+
     class Meta:
         model = Visit
-        fields = '__all__'
+        fields = [
+            'id', 'hospital', 'patient', 'doctor', 'diagnosis', 
+            'prescription_text', 'clinical_notes', 'visit_date', 
+            'next_visit_date', 'created_at', 'lab_report_file'
+        ]
+
+    def validate_next_visit_date(self, value):
+        from django.utils import timezone
+        if value and value < timezone.now().date():
+            raise serializers.ValidationError("Next visit date cannot be in the past.")
+        return value
 
 class PatientDetailsSerializer(serializers.ModelSerializer):
     class Meta:
         model = Profile
-        fields = ['full_name', 'health_id', 'age', 'gender']
+        fields = [
+            'full_name', 'health_id', 'age', 'gender', 'blood_group', 
+            'contact_number', 'email', 'address', 'emergency_contact', 
+            'allergies', 'chronic_conditions'
+        ]
 
 class DetailedVisitSerializer(serializers.ModelSerializer):
     doctor_name = serializers.CharField(source='doctor.full_name', read_only=True)
@@ -47,3 +63,9 @@ class VaccinationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Vaccination
         fields = '__all__'
+
+    def validate_next_due_date(self, value):
+        from django.utils import timezone
+        if value and value < timezone.now().date():
+            raise serializers.ValidationError("Next due date cannot be in the past.")
+        return value

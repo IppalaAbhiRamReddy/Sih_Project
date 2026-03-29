@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Users,
@@ -16,16 +16,18 @@ import {
     Menu
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Modal } from '../../components/ui/Modal';
-import { Input } from '../../components/ui/Input';
-import { Button } from '../../components/ui/Button';
-import { Select } from '../../components/ui/Select';
+import { Modal } from '../../components/shared/Modal';
+import { Input } from '../../components/shared/Input';
+import { Button } from '../../components/shared/Button';
+import { Select } from '../../components/shared/Select';
 import { staffService, patientService } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import { TableSkeleton } from '../../components/shared/TableSkeleton';
 
 export default function StaffDashboard() {
     const navigate = useNavigate();
     const { profile, signOut } = useAuth();
+    const today = new Date().toISOString().split('T')[0];
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
     const [isRegisterOpen, setIsRegisterOpen] = useState(false);
@@ -52,19 +54,15 @@ export default function StaffDashboard() {
     const [error, setError] = useState(null);
     const [registrationError, setRegistrationError] = useState(null);
 
-    useEffect(() => {
-        if (profile?.id) fetchDashboardData();
-    }, [profile]);
 
-    const fetchDashboardData = async () => {
+    const fetchDashboardData = useCallback(async (isRefresh = false) => {
         if (!profile?.id) return;
         try {
-            setLoading(true);
+            if (!isRefresh) setLoading(true);
             setError(null);
-            const hospitalId = profile.hospital_id;
             const [registrationsData, statsData] = await Promise.all([
-                staffService.getRecentRegistrations(profile.id, hospitalId),
-                staffService.getStats(profile.id, hospitalId),
+                staffService.getRecentRegistrations(profile.id),
+                staffService.getStats(),
             ]);
             setRecentRegistrations(registrationsData);
             setStats(statsData);
@@ -74,7 +72,28 @@ export default function StaffDashboard() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [profile?.id]);
+
+    /**
+     * Refreshes dashboard data selectively to improve responsiveness after mutations.
+     */
+    const refreshTabData = useCallback(async () => {
+        if (!profile?.id) return;
+        try {
+            const [registrationsData, statsData] = await Promise.all([
+                staffService.getRecentRegistrations(profile.id),
+                staffService.getStats(),
+            ]);
+            setRecentRegistrations(registrationsData);
+            setStats(statsData);
+        } catch (err) {
+            console.error('Failed to refresh data', err);
+        }
+    }, [profile?.id]);
+
+    useEffect(() => {
+        if (profile?.id) fetchDashboardData();
+    }, [profile?.id, fetchDashboardData]);
 
     const handleLogout = async () => {
         await signOut();
@@ -109,7 +128,7 @@ export default function StaffDashboard() {
                 allergies: '', chronicConditions: ''
             });
             setRegisterVaccinations([]);
-            fetchDashboardData();
+            refreshTabData();
         } catch (err) {
             console.error('Registration failed', err);
             const msg = err.message || '';
@@ -148,7 +167,7 @@ export default function StaffDashboard() {
             setEditFormData(null);
             setEditVaccinations([]);
             setSearchQuery('');
-            fetchDashboardData();
+            refreshTabData();
         } catch (err) {
             console.error('Update failed', err);
             // More descriptive error for the user
@@ -177,12 +196,12 @@ export default function StaffDashboard() {
                 // Merge full details from server into form fields
                 setEditFormData(prev => ({
                     ...prev,
-                    email: details.email || prev.email || '',
-                    address: details.address || prev.address || '',
-                    bloodGroup: details.bloodGroup || prev.bloodGroup || '',
-                    emergencyContact: details.emergencyContact || prev.emergencyContact || '',
-                    allergies: Array.isArray(details.allergies) ? details.allergies.join(', ') : (details.allergies || prev.allergies || ''),
-                    chronicConditions: Array.isArray(details.chronicConditions) ? details.chronicConditions.join(', ') : (details.chronicConditions || prev.chronicConditions || ''),
+                    email: details.profile?.email || prev.email || '',
+                    address: details.profile?.address || prev.address || '',
+                    bloodGroup: details.profile?.bloodGroup || prev.bloodGroup || '',
+                    emergencyContact: details.profile?.emergencyContact || prev.emergencyContact || '',
+                    allergies: Array.isArray(details.profile?.allergies) ? details.profile.allergies.join(', ') : (details.profile?.allergies || prev.allergies || ''),
+                    chronicConditions: Array.isArray(details.profile?.chronicConditions) ? details.profile.chronicConditions.join(', ') : (details.profile?.chronicConditions || prev.chronicConditions || ''),
                 }));
 
                 if (Array.isArray(details.vaccinations)) {
@@ -217,16 +236,6 @@ export default function StaffDashboard() {
         }
     };
 
-    if (loading) {
-        return (
-            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-                <div className="text-center">
-                    <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-                    <p className="text-gray-500 text-sm">Loading dashboard…</p>
-                </div>
-            </div>
-        );
-    }
 
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col lg:flex-row">
@@ -411,8 +420,12 @@ export default function StaffDashboard() {
                             </div>
                         </div>
                     </div>
-                    <div className="max-h-[580px] overflow-y-auto overflow-x-auto">
-                        {recentRegistrations.length === 0 ? (
+                    <div className="flex-1 min-h-0 overflow-y-auto">
+                        {loading ? (
+                            <div className="p-6">
+                                <TableSkeleton rows={8} cols={7} />
+                            </div>
+                        ) : recentRegistrations.length === 0 ? (
                             <div className="p-12 text-center text-gray-400">
                                 <UserPlus className="w-10 h-10 mx-auto mb-3 opacity-30" />
                                 <p className="font-medium">No registrations yet</p>
@@ -653,6 +666,7 @@ export default function StaffDashboard() {
                                                     <label className="text-xs text-gray-500 mb-0.5 block">Next Due Date</label>
                                                     <input
                                                         type="date"
+                                                        min={today}
                                                         value={vac.nextDue}
                                                         onChange={(e) => setRegisterVaccinations(registerVaccinations.map((v, idx) => idx === i ? { ...v, nextDue: e.target.value } : v))}
                                                         className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-100 focus:border-green-500"
@@ -892,6 +906,7 @@ export default function StaffDashboard() {
                                                         <label className="text-xs text-gray-500 mb-0.5 block">Next Due Date</label>
                                                         <input
                                                             type="date"
+                                                            min={today}
                                                             value={vac.nextDue}
                                                             onChange={(e) => setEditVaccinations(editVaccinations.map((v, idx) => idx === i ? { ...v, nextDue: e.target.value } : v))}
                                                             className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-100 focus:border-green-500"
@@ -926,7 +941,7 @@ export default function StaffDashboard() {
                 title="Patient Details"
             >
                 {viewingPatient && (
-                    <div className="space-y-6">
+                    <div className="space-y-6 overflow-y-auto max-h-[80vh] pr-2">
                         <div className="flex items-center justify-between bg-green-50 p-4 rounded-xl border border-green-100">
                             <div>
                                 <h4 className="text-xl font-bold text-green-900">{viewingPatient.name}</h4>

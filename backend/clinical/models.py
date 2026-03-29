@@ -1,3 +1,8 @@
+"""
+Models for the Clinical app.
+Defines schema for medical visits, prescriptions, lab reports, and vaccinations.
+Uses UUID IDs for enhanced security and database portability.
+"""
 from django.db import models
 from django.utils import timezone
 from hospitals.models import Hospital
@@ -5,6 +10,10 @@ from users.models import Profile
 import uuid
 
 class Visit(models.Model):
+    """
+    Represents a clinical encounter (visit).
+    Stores diagnosis, clinical notes, and links to the reporting doctor and hospital.
+    """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     hospital = models.ForeignKey(Hospital, on_delete=models.CASCADE)
     patient = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name='patient_visits')
@@ -20,6 +29,10 @@ class Visit(models.Model):
         db_table = 'visits'
 
 class Prescription(models.Model):
+    """
+    Electronic prescription record. 
+    Can be associated with a specific visit or created independently.
+    """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     visit = models.ForeignKey(Visit, on_delete=models.CASCADE, null=True, blank=True)
     patient = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name='patient_prescriptions')
@@ -34,6 +47,10 @@ class Prescription(models.Model):
         db_table = 'prescriptions'
 
 class LabReport(models.Model):
+    """
+    Metadata for laboratory diagnostic reports.
+    Stores links to external files (e.g., Supabase Buckets) and report status.
+    """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     patient = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name='lab_reports')
     hospital = models.ForeignKey(Hospital, on_delete=models.SET_NULL, null=True, blank=True)
@@ -47,6 +64,10 @@ class LabReport(models.Model):
         db_table = 'lab_reports'
 
 class Vaccination(models.Model):
+    """
+    Immunization records for patients.
+    Tracks both administered vaccines and future due dates.
+    """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     patient = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name='vaccinations')
     vaccine_name = models.CharField(max_length=255)

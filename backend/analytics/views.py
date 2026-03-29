@@ -1,3 +1,8 @@
+"""
+Views for the Analytics app.
+Provides AI-driven forecasting and disease distribution analytics.
+Utilizes ARIMA and classification models to generate hospital-specific metrics.
+"""
 from rest_framework import viewsets, response, permissions
 from rest_framework.decorators import action
 from .models import AIAnalytics
@@ -7,6 +12,11 @@ from django.utils import timezone
 from users.models import Profile # To get hospital_id from user profile
 
 class AIAnalyticsViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for AI Analytics results.
+    Includes custom actions for forcasting and disease distribution analysis.
+    Implements a simple caching mechanism using the AIAnalytics model.
+    """
     queryset = AIAnalytics.objects.all()
     serializer_class = AIAnalyticsSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -38,6 +48,10 @@ class AIAnalyticsViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def forecast(self, request):
+        """
+        Generates volume forecasts by department using the ARIMAForecaster.
+        Supports '7d', '30d', and other ranges via query parameters.
+        """
         hospital_id = self.get_hospital_id()
         if not hospital_id:
             return response.Response({"error": "Hospital ID not found for user"}, status=400)
@@ -68,6 +82,10 @@ class AIAnalyticsViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def disease_distribution(self, request):
+        """
+        Analyzes and predicts disease distribution within the hospital.
+        Optionally filters results by department.
+        """
         hospital_id = self.get_hospital_id()
         if not hospital_id:
             return response.Response({"error": "Hospital ID not found for user"}, status=400)
@@ -93,6 +111,9 @@ class AIAnalyticsViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def evaluate_models(self, request):
+        """
+        Returns performance evaluation metrics (RMSE, Accuracy, etc.) for the ML models.
+        """
         hospital_id = self.get_hospital_id()
         if not hospital_id:
             return response.Response({"error": "Hospital ID not found for user"}, status=400)

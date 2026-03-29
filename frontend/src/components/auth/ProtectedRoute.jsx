@@ -1,11 +1,13 @@
-// src/components/ProtectedRoute.jsx
-// Guards a route so only authenticated users with permitted roles can access it.
-// Usage in App.jsx:
-//   <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />
-
+/**
+ * Protected Route Wrapper
+ * 
+ * Guards application routes based on authentication status and user roles.
+ * Automatically restores user session and checks profile existence before rendering children.
+ * Redirects unauthorized users to the login page or their respective dashboards.
+ */
 import React from 'react';
 import { Navigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../../context/AuthContext';
 
 export default function ProtectedRoute({ children, allowedRoles = [] }) {
     const { user, profile, loading } = useAuth();
