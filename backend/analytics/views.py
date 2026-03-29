@@ -69,12 +69,13 @@ class AIAnalyticsViewSet(viewsets.ModelViewSet):
         steps_map = {'7d': 7, '30d': 30, '90days': 30, '3m': 30}
         steps = steps_map.get(time_range, 7)
         
-        forecast_data = forecaster.forecast_by_department(steps=steps)
-        load_status = forecaster.get_department_load_status()
+        forecast_results = forecaster.forecast_by_department(steps=steps)
+        load_status = forecaster.get_department_load_status(forecast_data=forecast_results)
         
         result = {
-            "forecast": forecast_data,
-            "status": load_status
+            "forecast": forecast_results['forecast'],
+            "status": load_status,
+            "metadata": forecast_results['metadata']
         }
         
         self.set_cached_result(cache_key, hospital_id, result)
@@ -104,10 +105,10 @@ class AIAnalyticsViewSet(viewsets.ModelViewSet):
         days_map = {'7days': 7, '30days': 30, '90days': 90, '7d': 7, '30d': 30, '3m': 90, '6m': 180}
         days = days_map.get(time_range, 30)
         
-        distribution = classifier.predict_distribution(days=days, department_id=department_id)
+        result = classifier.get_distribution(days=days, department_id=department_id)
         
-        self.set_cached_result(cache_key, hospital_id, distribution)
-        return response.Response(distribution)
+        self.set_cached_result(cache_key, hospital_id, result)
+        return response.Response(result)
 
     @action(detail=False, methods=['get'])
     def evaluate_models(self, request):
