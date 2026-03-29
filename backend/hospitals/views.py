@@ -371,7 +371,7 @@ class UserRegistrationView(views.APIView):
                 # 3. Get Department
                 dept = None
                 if dept_id:
-                    dept = Department.objects.get(id=dept_id)
+                    dept = Department.objects.get(dept_code=dept_id)
 
                 # 4. Create Profile
                 Profile.objects.create(
