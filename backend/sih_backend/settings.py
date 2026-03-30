@@ -101,8 +101,7 @@ if DATABASE_URL:
             )
         }
     except Exception as e:
-        print(f"Error parsing DATABASE_URL: {e}")
-        DATABASE_URL = None
+        raise Exception(f"DATABASE_URL parsing failed: {e}")
 
 if not DATABASE_URL:
     # Fallback to individual components or SQLite
