@@ -25,39 +25,37 @@ class LoginView(views.APIView):
 
     def post(self, request):
         """
-        Expects 'email' and 'password'. 
-        Returns {user, access, refresh} on success.
+        Supports authentication by email for all roles (including Patients with Health ID usernames).
         """
         serializer = LoginSerializer(data=request.data)
         if serializer.is_valid():
             email = serializer.validated_data['email']
             password = serializer.validated_data['password']
             
-            # Authenticate against Django's User model
-            user = authenticate(username=email, password=password)
+            # Find the user by username OR email field to handle different registration patterns
+            user_obj = User.objects.filter(username=email).first() or \
+                      User.objects.filter(email=email).first()
             
-            if user:
-                try:
-                    profile = Profile.objects.select_related('user', 'hospital', 'department').get(email=email)
-                except Profile.DoesNotExist:
-                    return Response({'error': 'Profile not found. Please contact support.'}, status=status.HTTP_404_NOT_FOUND)
+            if user_obj:
+                # Authenticate using the USERNAME found in the DB (which might be a Health ID)
+                user = authenticate(username=user_obj.username, password=password)
                 
-                refresh = RefreshToken.for_user(user)
-                
-                return Response({
-                    'user': UserProfileSerializer(profile).data,
-                    'access': str(refresh.access_token),
-                    'refresh': str(refresh),
-                })
-            
-            # Additional check for disabled accounts (security: ONLY reveal this if password is correct)
-            # authenticate() returns None for inactive users by default.
-            from django.contrib.auth import get_user_model
-            User = get_user_model()
-            potential_user = User.objects.filter(username=email).first() or \
-                            User.objects.filter(email=email).first()
-                            
-            if potential_user and potential_user.check_password(password) and not potential_user.is_active:
+                if user:
+                    try:
+                        profile = Profile.objects.select_related('user', 'hospital', 'department').get(user=user)
+                    except Profile.DoesNotExist:
+                        return Response({'error': 'Profile not found. Please contact support.'}, status=status.HTTP_404_NOT_FOUND)
+                    
+                    refresh = RefreshToken.for_user(user)
+                    
+                    return Response({
+                        'user': UserProfileSerializer(profile).data,
+                        'access': str(refresh.access_token),
+                        'refresh': str(refresh),
+                    })
+
+            # Check if account is disabled for the correct user/password combination
+            if user_obj and user_obj.check_password(password) and not user_obj.is_active:
                 return Response({
                     'error': 'This account has been disabled. Please contact your administrator for reactivation.'
                 }, status=status.HTTP_403_FORBIDDEN)
