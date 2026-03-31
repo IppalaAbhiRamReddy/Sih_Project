@@ -32,7 +32,7 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-default-key')
 
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '*').split(',')
 
 
 # Application definition
@@ -151,17 +151,40 @@ SIMPLE_JWT = {
     'USER_ID_CLAIM': 'user_id',
 }
 
-# CORS Configuration
-CORS_ALLOW_ALL_ORIGINS = True
+# CORS and CSRF Configuration
 CORS_ALLOW_CREDENTIALS = True
+
+# Read origins from environment
+ENV_CORS_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
+CORS_ALLOWED_ORIGINS = [origin.strip() for origin in ENV_CORS_ORIGINS if origin.strip()]
+
+# If we need to support any host for development, uncomment the next line
+# CORS_ALLOW_ALL_ORIGINS = DEBUG
 
 CSRF_TRUSTED_ORIGINS = [
     "https://*.vercel.app",
     "https://sih-project-*.vercel.app",
+    "https://sih-backend-aa0e.onrender.com",
 ]
 
-# Optional but helpful for debugging
+# Ensure specified origins from env are also in CSRF trusted list
+for origin in CORS_ALLOWED_ORIGINS:
+    if origin.startswith('https://'):
+        if origin not in CSRF_TRUSTED_ORIGINS:
+            CSRF_TRUSTED_ORIGINS.append(origin)
+
 CORS_EXPOSE_HEADERS = ['Content-Type', 'X-CSRFToken']
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
 
 
 # Password validation

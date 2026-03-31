@@ -580,7 +580,7 @@ export const hospitalService = {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        id: deptData.id,
+        dept_code: deptData.dept_code,
         name: deptData.name,
         head: deptData.head || null,
         doctors: parseInt(deptData.doctors, 10) || 0,

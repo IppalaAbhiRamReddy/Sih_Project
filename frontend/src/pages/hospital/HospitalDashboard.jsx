@@ -47,12 +47,12 @@ export default function HospitalDashboard() {
     const [editStaffData, setEditStaffData] = useState({ id: '', name: '', dept: '' });
 
     // Form States
-    const [newDeptData, setNewDeptData] = useState({ id: '', name: '', head: '', doctors: 0, staff: 0 });
+    const [newDeptData, setNewDeptData] = useState({ dept_code: '', name: '', head: '', doctors: 0, staff: 0 });
     const [newDoctorData, setNewDoctorData] = useState({ name: '', email: '', dept: '', specialization: '' });
     const [newStaffData, setNewStaffData] = useState({ name: '', email: '', dept: '' });
 
     // Filters
-    const departmentOptions = departments.map(d => ({ value: d.uid, label: d.name }));
+    const departmentOptions = departments.map(d => ({ value: d.id, label: d.name }));
     const filterDeptOptions = [{ value: 'All', label: 'All Departments' }, ...departmentOptions];
 
     const [deptSearch, setDeptSearch] = useState('');
@@ -64,11 +64,11 @@ export default function HospitalDashboard() {
 
     const filteredDepartments = departments.filter(d =>
         d.name.toLowerCase().includes(deptSearch.toLowerCase()) ||
-        d.id.toLowerCase().includes(deptSearch.toLowerCase())
+        d.dept_code.toLowerCase().includes(deptSearch.toLowerCase())
     );
 
     const filteredDoctors = doctors.filter(d =>
-        (doctorDeptFilter === 'All' || d.dept === doctorDeptFilter) &&
+        (doctorDeptFilter === 'All' || d.dept_id === doctorDeptFilter) &&
         (accountStatusFilter === 'All' ||
             (accountStatusFilter === 'Enabled' && d.active) ||
             (accountStatusFilter === 'Disabled' && !d.active)) &&
@@ -77,7 +77,7 @@ export default function HospitalDashboard() {
     );
 
     const filteredStaff = staff.filter(s =>
-        (staffDeptFilter === 'All' || s.dept === staffDeptFilter) &&
+        (staffDeptFilter === 'All' || s.dept_id === staffDeptFilter) &&
         (accountStatusFilter === 'All' ||
             (accountStatusFilter === 'Enabled' && s.active) ||
             (accountStatusFilter === 'Disabled' && !s.active)) &&
@@ -176,7 +176,7 @@ export default function HospitalDashboard() {
     };
 
     const openEditDoctor = (doc) => {
-        setEditDoctorData({ id: doc.id, name: doc.name, dept: doc.dept, specialization: doc.spec });
+        setEditDoctorData({ id: doc.id, name: doc.name, dept: doc.dept_id, specialization: doc.spec });
         setEditDoctorOpen(true);
     };
 
@@ -199,7 +199,7 @@ export default function HospitalDashboard() {
     };
 
     const openEditStaff = (s) => {
-        setEditStaffData({ id: s.id, name: s.name, dept: s.dept });
+        setEditStaffData({ id: s.id, name: s.name, dept: s.dept_id });
         setEditStaffOpen(true);
     };
 
@@ -215,7 +215,7 @@ export default function HospitalDashboard() {
             });
             await promise;
             setIsDeptModalOpen(false);
-            setNewDeptData({ id: '', name: '', head: '', doctors: 0, staff: 0 });
+            setNewDeptData({ dept_code: '', name: '', head: '', doctors: 0, staff: 0 });
             fetchDashboardData(true);
         } catch (err) {
             console.error('Failed to add department', err);
@@ -606,7 +606,7 @@ export default function HospitalDashboard() {
                                                     <tbody className="divide-y divide-gray-100">
                                                         {filteredDepartments.map((dept) => (
                                                             <tr key={dept.id} className="hover:bg-gray-50/50">
-                                                                <td className="px-6 py-4 text-sm font-medium text-gray-900">{dept.id}</td>
+                                                                <td className="px-6 py-4 text-sm font-medium text-gray-900">{dept.dept_code}</td>
                                                                 <td className="px-6 py-4 text-sm text-gray-600">{dept.name}</td>
                                                                 <td className="px-6 py-4 text-sm text-gray-500">{dept.head}</td>
                                                                 <td className="px-6 py-4 text-sm text-gray-600">{dept.doctors}</td>
@@ -1028,8 +1028,8 @@ export default function HospitalDashboard() {
                         label="Department ID *"
                         placeholder="DEPT006"
                         required
-                        value={newDeptData.id}
-                        onChange={(e) => setNewDeptData({ ...newDeptData, id: e.target.value })}
+                        value={newDeptData.dept_code}
+                        onChange={(e) => setNewDeptData({ ...newDeptData, dept_code: e.target.value })}
                     />
                     <Input
                         label="Department Name *"

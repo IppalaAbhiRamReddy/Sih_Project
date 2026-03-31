@@ -89,19 +89,26 @@ class PasswordResetRequestView(views.APIView):
                 token = default_token_generator.make_token(user)
                 uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
                 
-                # In development, use localhost. Production should use environment variables.
-                reset_link = f"http://localhost:5173/reset-password?uidb64={uidb64}&token={token}"
+                # In production, use FRONTEND_URL. Development falls back to localhost.
+                frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:5173')
+                reset_link = f"{frontend_url}/reset-password?uidb64={uidb64}&token={token}"
                 
-                try:
-                    send_mail(
+                import threading
+                def send_async_email(subject, message, from_email, recipient_list):
+                    try:
+                        send_mail(subject, message, from_email, recipient_list, fail_silently=False)
+                    except Exception as e:
+                        print(f"Async email failed: {str(e)}")
+
+                threading.Thread(
+                    target=send_async_email,
+                    args=(
                         "Password Reset Request | SIH Medical",
                         f"Please click the link below to reset your password:\n\n{reset_link}\n\nIf you did not request this, ignore this email.",
                         settings.DEFAULT_FROM_EMAIL,
-                        [email],
-                        fail_silently=False,
+                        [email]
                     )
-                except Exception as e:
-                    return Response({'error': f'Failed to send email. Error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                ).start()
             
             # Security best practice: Always return 200/success message even if the user didn't exist
             return Response({'message': 'If an account exists with this email, a reset link has been sent.'}, status=status.HTTP_200_OK)
