@@ -132,6 +132,54 @@ class HospitalViewSet(mixins.ListModelMixin,
         except Exception as e:
             return Response({'error': str(e)}, status=400)
 
+    @action(detail=False, methods=['get'])
+    def dashboard_overview(self, request):
+        """
+        Consolidated endpoint for the hospital dashboard to avoid multiple parallel calls.
+        Returns: stats, departments, doctors (recent), and staff (recent).
+        """
+        try:
+            profile = request.user.profile
+            hospital = profile.hospital
+            if not hospital:
+                return Response({'error': 'Hospital not found'}, status=400)
+
+            from django.db.models import Count, Q, Value
+            from django.db.models.functions import Coalesce
+
+            # 1. Dashboard Stats (Admin Stats)
+            stats = Profile.objects.filter(hospital=hospital, is_active=True).aggregate(
+                doctors_count=Count('id', filter=Q(role='doctor')),
+                staff_count=Count('id', filter=Q(role='staff'))
+            )
+            
+            # 2. Departments with efficient counts
+            departments = Department.objects.filter(hospital=hospital).annotate(
+                doctors=Coalesce(Count('profiles', filter=Q(profiles__role='doctor', profiles__is_active=True)), Value(0)),
+                staff=Coalesce(Count('profiles', filter=Q(profiles__role='staff', profiles__is_active=True)), Value(0))
+            ).order_by('created_at')
+
+            # 3. Doctors & Staff
+            base_profiles = Profile.objects.filter(hospital=hospital).select_related('user', 'department', 'hospital').order_by('-created_at')
+            doctors = base_profiles.filter(role='doctor')[:50]
+            staff_list = base_profiles.filter(role='staff')[:50]
+
+            from .serializers import DepartmentSerializer
+            from users.serializers import UserProfileSerializer
+
+            return Response({
+                'stats': {
+                    'doctors': stats['doctors_count'],
+                    'staff': stats['staff_count'],
+                    'active': stats['doctors_count'] + stats['staff_count']
+                },
+                'departments': DepartmentSerializer(departments, many=True).data,
+                'doctors': UserProfileSerializer(doctors, many=True).data,
+                'staff': UserProfileSerializer(staff_list, many=True).data
+            })
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
+
 class HospitalRegistrationView(views.APIView):
     """
     Creates a new Hospital account along with a Hospital Admin user and Profile.

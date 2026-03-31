@@ -38,7 +38,7 @@ class LoginView(views.APIView):
             
             if user:
                 try:
-                    profile = Profile.objects.get(email=email)
+                    profile = Profile.objects.select_related('user', 'hospital', 'department').get(email=email)
                 except Profile.DoesNotExist:
                     return Response({'error': 'Profile not found. Please contact support.'}, status=status.HTTP_404_NOT_FOUND)
                 

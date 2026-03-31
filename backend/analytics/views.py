@@ -30,6 +30,36 @@ class AIAnalyticsViewSet(viewsets.ModelViewSet):
         except:
             return None
 
+    def _parse_range(self, range_param, default_days=7):
+        """
+        Safely parses range strings into integers.
+        Supports '7days', '30d', '30days', '7', etc.
+        """
+        if not range_param:
+            return default_days
+        
+        # Hardcoded mappings for consistency
+        VALID_RANGES = {
+            '7d': 7, '7days': 7,
+            '30d': 30, '30days': 30,
+            '90d': 90, '90days': 90, '3m': 90,
+            '180d': 180, '180days': 180, '6m': 180
+        }
+        
+        if range_param in VALID_RANGES:
+            return VALID_RANGES[range_param]
+            
+        # Regex-style fallback for mixed strings like "14days"
+        import re
+        match = re.search(r'(\d+)', str(range_param))
+        if match:
+            try:
+                return int(match.group(1))
+            except ValueError:
+                pass
+                
+        return default_days
+
     def get_cached_result(self, metric_name, hospital_id, validity_hours=6):
         six_hours_ago = timezone.now() - timezone.timedelta(hours=validity_hours)
         return AIAnalytics.objects.filter(
@@ -52,34 +82,36 @@ class AIAnalyticsViewSet(viewsets.ModelViewSet):
         Generates volume forecasts by department using the ARIMAForecaster.
         Supports '7d', '30d', and other ranges via query parameters.
         """
-        hospital_id = self.get_hospital_id()
-        if not hospital_id:
-            return response.Response({"error": "Hospital ID not found for user"}, status=400)
+        try:
+            hospital_id = self.get_hospital_id()
+            if not hospital_id:
+                return response.Response({"error": "Hospital ID not found for user"}, status=400)
 
-        time_range = request.query_params.get('range', '7d')
-        cache_key = f"forecast_{time_range}"
-        
-        cached = self.get_cached_result(cache_key, hospital_id)
-        if cached:
-            return response.Response(cached.value)
+            range_param = request.query_params.get('range', '7d')
+            cache_key = f"forecast_{range_param}"
+            
+            cached = self.get_cached_result(cache_key, hospital_id)
+            if cached:
+                return response.Response(cached.value)
 
-        forecaster = ARIMAForecaster(hospital_id=hospital_id)
-        
-        # Support dynamic steps based on range (default 7 days)
-        steps_map = {'7d': 7, '30d': 30, '90days': 30, '3m': 30}
-        steps = steps_map.get(time_range, 7)
-        
-        forecast_results = forecaster.forecast_by_department(steps=steps)
-        load_status = forecaster.get_department_load_status(forecast_data=forecast_results)
-        
-        result = {
-            "forecast": forecast_results['forecast'],
-            "status": load_status,
-            "metadata": forecast_results['metadata']
-        }
-        
-        self.set_cached_result(cache_key, hospital_id, result)
-        return response.Response(result)
+            forecaster = ARIMAForecaster(hospital_id=hospital_id)
+            
+            # Use the new robust parser
+            steps = self._parse_range(range_param, default_days=7)
+            
+            forecast_results = forecaster.forecast_by_department(steps=steps)
+            load_status = forecaster.get_department_load_status(forecast_data=forecast_results)
+            
+            result = {
+                "forecast": forecast_results['forecast'],
+                "status": load_status,
+                "metadata": forecast_results['metadata']
+            }
+            
+            self.set_cached_result(cache_key, hospital_id, result)
+            return response.Response(result)
+        except Exception as e:
+            return response.Response({"error": f"Forecast failed: {str(e)}"}, status=500)
 
     @action(detail=False, methods=['get'])
     def disease_distribution(self, request):
@@ -87,28 +119,30 @@ class AIAnalyticsViewSet(viewsets.ModelViewSet):
         Analyzes and predicts disease distribution within the hospital.
         Optionally filters results by department.
         """
-        hospital_id = self.get_hospital_id()
-        if not hospital_id:
-            return response.Response({"error": "Hospital ID not found for user"}, status=400)
-        
-        time_range = request.query_params.get('range', '30days')
-        department_id = request.query_params.get('dept', 'all')
-        cache_key = f"disease_dist_{time_range}_{department_id}"
-        
-        cached = self.get_cached_result(cache_key, hospital_id)
-        if cached:
-            return response.Response(cached.value)
+        try:
+            hospital_id = self.get_hospital_id()
+            if not hospital_id:
+                return response.Response({"error": "Hospital ID not found for user"}, status=400)
+            
+            range_param = request.query_params.get('range', '30days')
+            department_id = request.query_params.get('dept', 'all')
+            cache_key = f"disease_dist_{range_param}_{department_id}"
+            
+            cached = self.get_cached_result(cache_key, hospital_id)
+            if cached:
+                return response.Response(cached.value)
 
-        classifier = DiseaseClassifier(hospital_id=hospital_id)
-        
-        # Convert range string to days
-        days_map = {'7days': 7, '30days': 30, '90days': 90, '7d': 7, '30d': 30, '3m': 90, '6m': 180}
-        days = days_map.get(time_range, 30)
-        
-        result = classifier.get_distribution(days=days, department_id=department_id)
-        
-        self.set_cached_result(cache_key, hospital_id, result)
-        return response.Response(result)
+            classifier = DiseaseClassifier(hospital_id=hospital_id)
+            
+            # Use the new robust parser
+            days = self._parse_range(range_param, default_days=30)
+            
+            result = classifier.get_distribution(days=days, department_id=department_id)
+            
+            self.set_cached_result(cache_key, hospital_id, result)
+            return response.Response(result)
+        except Exception as e:
+            return response.Response({"error": f"Analysis failed: {str(e)}"}, status=500)
 
     @action(detail=False, methods=['get'])
     def evaluate_models(self, request):

@@ -773,6 +773,15 @@ export const hospitalService = {
     return res.json();
   },
 
+  /** Consolidated Overview (one trip) */
+  getDashboardOverview: async () => {
+    const res = await fetchWithAuth(
+      `${DRF_BASE_URL}/hospitals/hospital/dashboard_overview/`,
+    );
+    if (!res.ok) throw new Error("Failed to fetch dashboard overview");
+    return res.json();
+  },
+
   /** AI Analytics: Department Load Forecast (ARIMA). */
   getAnalyticsForecast: async (timeRange) => {
     const res = await fetchWithAuth(

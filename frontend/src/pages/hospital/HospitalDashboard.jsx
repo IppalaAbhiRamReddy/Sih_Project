@@ -96,16 +96,11 @@ export default function HospitalDashboard() {
         try {
             if (!isRefresh) setLoading(true);
             setError(null);
-            const [deptData, docData, staffData, statsData] = await Promise.all([
-                hospitalService.getDepartments(profile.hospital_id),
-                hospitalService.getDoctors(profile.hospital_id),
-                hospitalService.getStaff(profile.hospital_id),
-                hospitalService.getStats(profile.hospital_id),
-            ]);
-            setDepartments(deptData);
-            setDoctors(docData);
-            setStaff(staffData);
-            setStats(statsData);
+            const overview = await hospitalService.getDashboardOverview();
+            setDepartments(overview.departments || []);
+            setDoctors(overview.doctors || []);
+            setStaff(overview.staff || []);
+            setStats(overview.stats || { doctors: 0, staff: 0, active: 0 });
 
             // Check if this hospital account is still active (always active for now)
             setHospitalActive(true);

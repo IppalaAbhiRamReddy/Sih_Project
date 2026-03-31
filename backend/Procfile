@@ -1,1 +1,1 @@
-web: gunicorn sih_backend.wsgi
+web: gunicorn sih_backend.wsgi --workers 3 --threads 2
