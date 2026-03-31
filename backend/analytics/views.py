@@ -81,44 +81,44 @@ class AIAnalyticsViewSet(viewsets.ModelViewSet):
         """
         Generates volume forecasts by department using the ARIMAForecaster.
         Supports '7d', '30d', and other ranges via query parameters.
+        Includes robust validation and error handling as per diagnostic report.
         """
         try:
             hospital_id = self.get_hospital_id()
             if not hospital_id:
-                return response.Response({"error": "Hospital ID not found for user"}, status=400)
+                return response.Response({"error": "Hospital ID not found for user session."}, status=401)
 
             range_param = request.query_params.get('range', '7days')
+            days = self._parse_range(range_param, default_days=7)
             
-            # --- Your suggested robust parsing ---
-            if range_param.endswith("days"):
-                try:
-                    days = int(range_param.replace("days", ""))
-                except ValueError:
-                    return response.Response({"error": "Invalid range format (expected e.g. 30days)"}, status=400)
-            elif range_param.endswith("d"):
-                try:
-                    days = int(range_param.replace("d", ""))
-                except ValueError:
-                    days = 7
-            else:
-                try:
-                    days = int(range_param)
-                except ValueError:
-                    days = 7
+            # Absolute bounds for forecast range (7 days to 1 year)
+            days = max(7, min(365, days))
 
             cache_key = f"forecast_{days}days"
             
+            # Check cache to avoid heavy forecasting computations
             cached = self.get_cached_result(cache_key, hospital_id)
             if cached:
                 return response.Response(cached.value)
 
             forecaster = ARIMAForecaster(hospital_id=hospital_id)
             
+            # Core computation
             forecast_results = forecaster.forecast_by_department(steps=days)
             
-            if not forecast_results.get('forecast'):
-                return response.Response({"message": "No historical data available for analysis"}, status=200)
+            # Handle cases with no data safely (return 200 with empty forecast instead of 500)
+            if forecast_results is None or not forecast_results.get('forecast'):
+                return response.Response({
+                    "forecast": [], 
+                    "status": [],
+                    "metadata": {
+                        "confidence": 0,
+                        "is_learning": True,
+                        "message": "No historical data available for analysis"
+                    }
+                }, status=200)
 
+            # Analyze load status (capacity vs expected volume)
             load_status = forecaster.get_department_load_status(forecast_data=forecast_results)
             
             result = {
@@ -129,8 +129,15 @@ class AIAnalyticsViewSet(viewsets.ModelViewSet):
             
             self.set_cached_result(cache_key, hospital_id, result)
             return response.Response(result)
+            
         except Exception as e:
-            return response.Response({"error": f"Forecast failed: {str(e)}"}, status=500)
+            import traceback
+            print(f"[AIAnalyticsViewSet] Forecast failed: {str(e)}")
+            traceback.print_exc()
+            return response.Response({
+                "error": "Failed to generate AI analytics forecast",
+                "details": str(e)
+            }, status=500)
 
     @action(detail=False, methods=['get'])
     def disease_distribution(self, request):

@@ -895,10 +895,9 @@ export default function HospitalDashboard() {
                                                                 ) : (
                                                                     <button
                                                                         onClick={() => handleSetAccountStatus(doc.id, true)}
-                                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-gray-50 text-gray-400 border border-gray-100 cursor-help transition-all"
-                                                                        title="Higher authority required to re-enable"
+                                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-green-600 hover:bg-green-50 border border-transparent hover:border-green-100 transition-all shadow-sm active:scale-95 cursor-pointer"
                                                                     >
-                                                                        <Lock className="w-3.5 h-3.5" /> Restricted (Disabled)
+                                                                        <UserCheck className="w-3.5 h-3.5" /> Enable Account
                                                                     </button>
                                                                 )}
                                                             </td>
@@ -978,10 +977,9 @@ export default function HospitalDashboard() {
                                                                 ) : (
                                                                     <button
                                                                         onClick={() => handleSetAccountStatus(s.id, true)}
-                                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-gray-50 text-gray-400 border border-gray-100 cursor-help transition-all"
-                                                                        title="Higher authority required to re-enable"
+                                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-green-600 hover:bg-green-50 border border-transparent hover:border-green-100 transition-all shadow-sm active:scale-95 cursor-pointer"
                                                                     >
-                                                                        <Lock className="w-3.5 h-3.5" /> Restricted (Disabled)
+                                                                        <UserCheck className="w-3.5 h-3.5" /> Enable Account
                                                                     </button>
                                                                 )}
                                                             </td>

@@ -308,8 +308,16 @@ export default function AiAnalytics() {
                 deptsLoaded.current = true;
             }
 
+            // Fetch trends and forecast with independent error handling for forecast
             const [forecast, diseases] = await Promise.all([
-                hospitalService.getAnalyticsForecast(timeRange),
+                hospitalService.getAnalyticsForecast(timeRange).catch(err => {
+                    console.warn('[AiAnalytics] Forecast unavailable:', err.message);
+                    return {
+                        forecast: [],
+                        status: [],
+                        metadata: { is_learning: true, message: err.message, confidence: 0 }
+                    };
+                }),
                 hospitalService.getAnalyticsDiseaseDistribution(timeRange, selectedDept),
             ]);
 
@@ -608,10 +616,10 @@ export default function AiAnalytics() {
                                 </p>
                                 {diseaseMetadata?.mode && (
                                     <span className={`inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full font-medium ${diseaseMetadata.mode === 'ml_context_aware'
-                                            ? 'bg-green-100 text-green-700'
-                                            : diseaseMetadata.mode === 'historical_counts'
-                                                ? 'bg-blue-100 text-blue-700'
-                                                : 'bg-gray-100 text-gray-500'
+                                        ? 'bg-green-100 text-green-700'
+                                        : diseaseMetadata.mode === 'historical_counts'
+                                            ? 'bg-blue-100 text-blue-700'
+                                            : 'bg-gray-100 text-gray-500'
                                         }`}>
                                         {diseaseMetadata.mode === 'ml_context_aware' ? '✦ AI context-aware' :
                                             diseaseMetadata.mode === 'historical_counts' ? '⊞ Historical counts' : 'No data'}

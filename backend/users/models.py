@@ -71,26 +71,17 @@ from django.dispatch import receiver
 def sync_profile_to_user(sender, instance, **kwargs):
     """
     Ensure the Django User's is_active status stays in sync with its Profile.
-    If is_active is toggled in Django Admin Profile, this will apply to the User.
     """
     if instance.user:
         user = instance.user
         if user.is_active != instance.is_active:
-            user.is_active = instance.is_active
-            # Use update_fields to avoid recursion and excessive saves
-            user.save(update_fields=['is_active'])
+            # Using update() avoids triggering the post_save signal on User again
+            User.objects.filter(pk=user.pk).update(is_active=instance.is_active)
 
 @receiver(post_save, sender=User)
 def sync_user_to_profile(sender, instance, **kwargs):
     """
     Ensure the Profile's is_active status stays in sync with its Django User.
-    If is_active is toggled in Django Admin User, this will apply to the Profile.
     """
-    try:
-        profile = instance.profile
-        if profile.is_active != instance.is_active:
-            profile.is_active = instance.is_active
-            profile.save(update_fields=['is_active'])
-    except:
-        # Profile might not exist yet during create_user, which is fine
-        pass
+    # Use filter().update() to avoid infinite recursion and Profile.DoesNotExist errors
+    Profile.objects.filter(user=instance).exclude(is_active=instance.is_active).update(is_active=instance.is_active)

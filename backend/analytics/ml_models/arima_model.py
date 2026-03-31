@@ -392,7 +392,12 @@ class ARIMAForecaster:
                         forecast_values = forecast_result.predicted_mean
 
                     for i, val in enumerate(forecast_values):
-                        results[i][str(dept.id)] = max(0, int(round(float(val))))
+                        # --- Improved robust calculation (Safe Math) ---
+                        v = float(val)
+                        if pd.isna(v) or not np.isfinite(v):
+                            results[i][str(dept.id)] = 0
+                        else:
+                            results[i][str(dept.id)] = max(0, int(round(v)))
 
                     depts_with_arima += 1
                     continue          # skip the fallback block below
@@ -406,6 +411,10 @@ class ARIMAForecaster:
             # --- Deterministic rolling-mean fallback (no random noise) ---
             window = min(7, len(series))
             avg    = float(series.iloc[-window:].mean()) if len(series) > 0 else 0.0
+            
+            # --- Robust check for NaN/Inf in fallback as well ---
+            if pd.isna(avg) or not np.isfinite(avg):
+                avg = 0.0
 
             for i in range(steps):
                 results[i][str(dept.id)] = max(0, int(round(avg)))
@@ -434,6 +443,7 @@ class ARIMAForecaster:
                 "departments_with_fallback": depts_with_fallback,
 
                 "min_visits_required":       MIN_GLOBAL_DAYS,
+                "max_forecast_range":        steps,
                 "min_dept_days_required":    MIN_DEPT_ACTIVE_DAYS,
                 "dept_progress":             dept_visit_counts, 
             },
@@ -453,7 +463,7 @@ class ARIMAForecaster:
         if not forecast_data:
             forecast_data = self.forecast_by_department(steps=1)
             
-        if not forecast_data or not forecast_data.get("forecast"):
+        if not forecast_data or not forecast_data.get("forecast") or len(forecast_data["forecast"]) == 0:
             return []
 
         tomorrow_data = forecast_data["forecast"][0]

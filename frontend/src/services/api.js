@@ -575,6 +575,33 @@ export const staffService = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const hospitalService = {
+  /**
+   * INTERNAL: Map raw Profile objects from DRF to frontend-friendly model.
+   * Handles consistency between bulk listing and individual fetches.
+   */
+  _mapProfileResult: (d) => {
+    const fmt = (dateStr) =>
+      dateStr
+        ? new Date(dateStr).toLocaleDateString("en-IN", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+          })
+        : "—";
+
+    return {
+      id: d.id,
+      name: d.full_name ?? d.name ?? "—",
+      dept: d.department_name ?? d.department ?? "—",
+      dept_id: d.department_id || d.dept_id || "",
+      spec: d.specialization ?? d.spec ?? "—",
+      join: fmt(d.join_date ?? d.join),
+      active: d.is_active ?? d.active,
+      email: d.email,
+      role: d.role,
+    };
+  },
+
   /** Department list for this hospital — uses Django DRF. */
   getDepartments: async () => {
     const res = await fetchWithAuth(`${DRF_BASE_URL}/hospitals/departments/`);
@@ -613,28 +640,7 @@ export const hospitalService = {
     );
     if (!res.ok) throw new Error("Failed to fetch doctors");
     const data = ensureArray(await res.json());
-
-    const fmt = (d) =>
-      d
-        ? new Date(d).toLocaleDateString("en-IN", {
-            day: "2-digit",
-            month: "short",
-            year: "numeric",
-          })
-        : "—";
-
-    return data
-      .filter((d) => d.role === "doctor")
-      .map((d) => ({
-        id: d.id,
-        name: d.full_name ?? "—",
-        dept: d.department_name ?? d.department ?? "—",
-        spec: d.specialization ?? "—",
-        join: fmt(d.join_date),
-        active: d.is_active,
-        email: d.email,
-        dept_id: d.department_id || "",
-      }));
+    return data.map(hospitalService._mapProfileResult);
   },
 
   /** Register a new doctor (calls Django DRF). */
@@ -714,27 +720,7 @@ export const hospitalService = {
     );
     if (!res.ok) throw new Error("Failed to fetch staff");
     const data = ensureArray(await res.json());
-
-    const fmt = (d) =>
-      d
-        ? new Date(d).toLocaleDateString("en-IN", {
-            day: "2-digit",
-            month: "short",
-            year: "numeric",
-          })
-        : "—";
-
-    return data
-      .filter((s) => s.role === "staff")
-      .map((s) => ({
-        id: s.id,
-        name: s.full_name ?? "—",
-        dept: s.department_name ?? s.department ?? "—",
-        join: fmt(s.join_date),
-        active: s.is_active,
-        email: s.email,
-        dept_id: s.department_id || "",
-      }));
+    return data.map(hospitalService._mapProfileResult);
   },
 
   /** Permanently remove a doctor/staff account (calls Django DRF). */
@@ -779,7 +765,15 @@ export const hospitalService = {
       `${DRF_BASE_URL}/hospitals/dashboard_overview/`,
     );
     if (!res.ok) throw new Error("Failed to fetch dashboard overview");
-    return res.json();
+    const json = await res.json();
+
+    // Map profiles for consistency
+    if (json.doctors)
+      json.doctors = json.doctors.map(hospitalService._mapProfileResult);
+    if (json.staff)
+      json.staff = json.staff.map(hospitalService._mapProfileResult);
+
+    return json;
   },
 
   /** AI Analytics: Department Load Forecast (ARIMA). */
@@ -787,7 +781,15 @@ export const hospitalService = {
     const res = await fetchWithAuth(
       `${DRF_BASE_URL}/analytics/trends/forecast/?range=${timeRange}`,
     );
-    if (!res.ok) throw new Error("Failed to fetch forecast data");
+
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(
+        errorData.details ||
+          errorData.error ||
+          `Failed to fetch forecast data (HTTP ${res.status})`,
+      );
+    }
     return res.json();
   },
 
