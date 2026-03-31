@@ -101,8 +101,11 @@ export const authService = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
     });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.error ?? "Login failed");
+    const isJson = res.headers
+      .get("content-type")
+      ?.includes("application/json");
+    const json = isJson ? await res.json() : {};
+    if (!res.ok) throw new Error(json.error ?? `Login failed (${res.status})`);
 
     localStorage.setItem("access_token", json.access);
     localStorage.setItem("refresh_token", json.refresh);
@@ -125,8 +128,12 @@ export const authService = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email }),
     });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.error || "Failed to send reset link");
+    const isJson = res.headers
+      .get("content-type")
+      ?.includes("application/json");
+    const json = isJson ? await res.json() : {};
+    if (!res.ok)
+      throw new Error(json.error || `Request failed (${res.status})`);
     return json;
   },
 
@@ -137,8 +144,11 @@ export const authService = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ uidb64, token, new_password: newPassword }),
     });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.error || "Failed to reset password");
+    const isJson = res.headers
+      .get("content-type")
+      ?.includes("application/json");
+    const json = isJson ? await res.json() : {};
+    if (!res.ok) throw new Error(json.error || `Reset failed (${res.status})`);
     return json;
   },
 };

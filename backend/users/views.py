@@ -1,7 +1,5 @@
-"""
-Views for the Users app.
-Handles Authentication (Login, JWT Refresh) and Password Management.
-"""
+import os
+import threading
 from rest_framework import views, status
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -93,7 +91,6 @@ class PasswordResetRequestView(views.APIView):
                 frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:5173')
                 reset_link = f"{frontend_url}/reset-password?uidb64={uidb64}&token={token}"
                 
-                import threading
                 def send_async_email(subject, message, from_email, recipient_list):
                     try:
                         send_mail(subject, message, from_email, recipient_list, fail_silently=False)
