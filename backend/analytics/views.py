@@ -87,8 +87,26 @@ class AIAnalyticsViewSet(viewsets.ModelViewSet):
             if not hospital_id:
                 return response.Response({"error": "Hospital ID not found for user"}, status=400)
 
-            range_param = request.query_params.get('range', '7d')
-            cache_key = f"forecast_{range_param}"
+            range_param = request.query_params.get('range', '7days')
+            
+            # --- Your suggested robust parsing ---
+            if range_param.endswith("days"):
+                try:
+                    days = int(range_param.replace("days", ""))
+                except ValueError:
+                    return response.Response({"error": "Invalid range format (expected e.g. 30days)"}, status=400)
+            elif range_param.endswith("d"):
+                try:
+                    days = int(range_param.replace("d", ""))
+                except ValueError:
+                    days = 7
+            else:
+                try:
+                    days = int(range_param)
+                except ValueError:
+                    days = 7
+
+            cache_key = f"forecast_{days}days"
             
             cached = self.get_cached_result(cache_key, hospital_id)
             if cached:
@@ -96,10 +114,11 @@ class AIAnalyticsViewSet(viewsets.ModelViewSet):
 
             forecaster = ARIMAForecaster(hospital_id=hospital_id)
             
-            # Use the new robust parser
-            steps = self._parse_range(range_param, default_days=7)
+            forecast_results = forecaster.forecast_by_department(steps=days)
             
-            forecast_results = forecaster.forecast_by_department(steps=steps)
+            if not forecast_results.get('forecast'):
+                return response.Response({"message": "No historical data available for analysis"}, status=200)
+
             load_status = forecaster.get_department_load_status(forecast_data=forecast_results)
             
             result = {

@@ -122,25 +122,11 @@ export default function HospitalDashboard() {
     };
 
     const handleSetAccountStatus = async (id, isActive) => {
-        // Restriction: Hospital Authority cannot re-enable accounts
-        if (isActive) {
-            toast.error("You don't have access to activate the account", {
-                duration: 4000,
-                position: 'top-center',
-                style: {
-                    borderRadius: '10px',
-                    background: '#333',
-                    color: '#fff',
-                },
-            });
-            return;
-        }
-
         try {
             const promise = hospitalService.setAccountStatus(id, isActive);
             toast.promise(promise, {
                 loading: 'Updating status...',
-                success: 'Account disabled successfully',
+                success: isActive ? 'Account enabled successfully' : 'Account disabled successfully',
                 error: 'Failed to update status',
             });
             await promise;

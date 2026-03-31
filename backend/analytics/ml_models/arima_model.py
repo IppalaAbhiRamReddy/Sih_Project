@@ -392,7 +392,7 @@ class ARIMAForecaster:
                         forecast_values = forecast_result.predicted_mean
 
                     for i, val in enumerate(forecast_values):
-                        results[i][dept.id] = max(0, int(round(float(val))))
+                        results[i][str(dept.id)] = max(0, int(round(float(val))))
 
                     depts_with_arima += 1
                     continue          # skip the fallback block below
@@ -408,7 +408,7 @@ class ARIMAForecaster:
             avg    = float(series.iloc[-window:].mean()) if len(series) > 0 else 0.0
 
             for i in range(steps):
-                results[i][dept.id] = max(0, int(round(avg)))
+                results[i][str(dept.id)] = max(0, int(round(avg)))
 
             depts_with_fallback += 1
 
@@ -461,7 +461,7 @@ class ARIMAForecaster:
         status_results = []
 
         for dept in departments:
-            count = tomorrow_data.get(dept.id, 0)
+            count = tomorrow_data.get(str(dept.id), 0)
 
             # Use actual active doctor count; fall back to 1 to avoid ZeroDivisionError
             doctor_count = Profile.objects.filter(

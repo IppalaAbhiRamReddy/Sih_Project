@@ -313,10 +313,9 @@ class ProfileViewSet(viewsets.ModelViewSet):
             new_instance = serializer.save()
             new_status = new_instance.is_active
 
-            # Restriction: Hospital Authority cannot re-enable accounts
-            # If status changes from False to True and user is not superuser/admin
+            # Restriction: Only Admin and Hospital Admin can re-enable accounts
             profile = self.request.user.profile
-            if not old_status and new_status and profile.role != 'admin':
+            if not old_status and new_status and profile.role not in ['admin', 'hospital_admin']:
                 raise permissions.exceptions.PermissionDenied("You don't have access to activate the account")
 
             # Sync is_active status to the associated Django User
