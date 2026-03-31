@@ -186,7 +186,7 @@ const Vaccinations = React.memo(({ vaccinations }) => {
                                 <td className="px-6 py-4 text-sm text-gray-600">{v.date}</td>
                                 <td className="px-6 py-4 text-sm text-gray-600">
                                     {v.nextDue}
-                                    {isDue && (
+                                    {isOverdue && (
                                         <span className="ml-2 text-[10px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded animate-pulse">OVERDUE</span>
                                     )}
                                 </td>
