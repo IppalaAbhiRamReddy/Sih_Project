@@ -53,11 +53,44 @@ class Profile(models.Model):
     registered_by = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    def __str__(self):
+        """Returns the string representation of the profile."""
+        return f"{self.full_name} ({self.role})"
+
     class Meta:
         db_table = 'profiles'
         verbose_name = 'User Profile'
         verbose_name_plural = 'User Profiles'
 
-    def __str__(self):
-        """Returns the string representation of the profile."""
-        return f"{self.full_name} ({self.role})"
+
+# --- Synchronization Signals ---
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+
+@receiver(post_save, sender=Profile)
+def sync_profile_to_user(sender, instance, **kwargs):
+    """
+    Ensure the Django User's is_active status stays in sync with its Profile.
+    If is_active is toggled in Django Admin Profile, this will apply to the User.
+    """
+    if instance.user:
+        user = instance.user
+        if user.is_active != instance.is_active:
+            user.is_active = instance.is_active
+            # Use update_fields to avoid recursion and excessive saves
+            user.save(update_fields=['is_active'])
+
+@receiver(post_save, sender=User)
+def sync_user_to_profile(sender, instance, **kwargs):
+    """
+    Ensure the Profile's is_active status stays in sync with its Django User.
+    If is_active is toggled in Django Admin User, this will apply to the Profile.
+    """
+    try:
+        profile = instance.profile
+        if profile.is_active != instance.is_active:
+            profile.is_active = instance.is_active
+            profile.save(update_fields=['is_active'])
+    except:
+        # Profile might not exist yet during create_user, which is fine
+        pass
