@@ -776,7 +776,7 @@ export const hospitalService = {
   /** Consolidated Overview (one trip) */
   getDashboardOverview: async () => {
     const res = await fetchWithAuth(
-      `${DRF_BASE_URL}/hospitals/hospital/dashboard_overview/`,
+      `${DRF_BASE_URL}/hospitals/dashboard_overview/`,
     );
     if (!res.ok) throw new Error("Failed to fetch dashboard overview");
     return res.json();
