@@ -32,8 +32,11 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-default-key')
 
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '*').split(',')
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '').split(',')
 
+# Get frontend URLs and filter out any empty strings from split
+FRONTEND_URL_RAW = os.getenv("FRONTEND_URL", "http://localhost:5173")
+FRONTEND_URL = [url.strip().rstrip('/') for url in FRONTEND_URL_RAW.split(',') if url.strip()]
 
 # Application definition
 

@@ -852,9 +852,12 @@ export const adminService = {
   },
 
   deleteHospital: async (hospitalId) => {
-    const res = await fetch(`${DRF_BASE_URL}/hospitals/${hospitalId}/`, {
-      method: "DELETE",
-    });
+    const res = await fetchWithAuth(
+      `${DRF_BASE_URL}/hospitals/${hospitalId}/`,
+      {
+        method: "DELETE",
+      },
+    );
     if (!res.ok) throw new Error("Failed to delete hospital via DRF");
   },
 };

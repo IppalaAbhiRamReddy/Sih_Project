@@ -14,9 +14,10 @@ import {
     MapPin,
     Calendar,
     Hash,
-    Loader
+    Loader,
+    Trash2
 } from 'lucide-react';
-import { Edit, Save, X, KeySquare, Menu } from 'lucide-react';
+import { Edit, Save, X, KeySquare, Menu, Copy } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
 import { Modal } from '../../components/shared/Modal';
@@ -88,6 +89,26 @@ export default function AdminDashboard() {
         } catch (err) {
             console.error('Failed to update hospital', err);
             alert('Failed to save: ' + err.message);
+        } finally {
+            setSavingHospital(false);
+        }
+    };
+
+    const handleDeleteHospital = async () => {
+        if (!window.confirm(`Are you certain you want to permanently remove ${selectedHospital.name}? This will also remove ALL associated doctors, staff, and clinical records. This action cannot be undone.`)) {
+            return;
+        }
+
+        try {
+            setSavingHospital(true);
+            await adminService.deleteHospital(selectedHospital.id);
+            setHospitals(prev => prev.filter(h => h.id !== selectedHospital.id));
+            setSelectedHospital(null);
+            // Refresh stats since counts will change
+            fetchDashboardData(true);
+        } catch (err) {
+            console.error('Failed to delete hospital', err);
+            alert('Failed to delete hospital: ' + err.message);
         } finally {
             setSavingHospital(false);
         }
@@ -323,7 +344,9 @@ export default function AdminDashboard() {
                                             onClick={() => setSelectedHospital(hospital)}
                                             className="hover:bg-blue-50/50 transition-colors cursor-pointer group"
                                         >
-                                            <td className="px-6 py-4 text-sm font-medium text-gray-900">{hospital.id}</td>
+                                            <td className="px-6 py-4 text-sm font-mono font-bold text-blue-600">
+                                                {hospital.id.slice(0, 8).toUpperCase()}
+                                            </td>
                                             <td className="px-6 py-4 text-sm text-gray-600 font-medium group-hover:text-blue-700 transition-colors">{hospital.name}</td>
                                             <td className="px-6 py-4 text-sm text-gray-500 text-right">{hospital.date}</td>
                                         </tr>
@@ -423,11 +446,27 @@ export default function AdminDashboard() {
                             </div>
                         </div>
 
+                        {/* Password */}
                         <div className="space-y-1">
-                            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Temporary Password</label>
+                            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">
+                                Temporary Password
+                            </label>
+
                             <div className="flex items-center justify-between bg-white p-3 rounded-lg border border-blue-200 shadow-sm ring-2 ring-blue-50">
-                                <span className="text-sm font-bold text-blue-700 font-mono tracking-wider">{registrationSuccess?.password}</span>
-                                <KeySquare className="w-4 h-4 text-blue-500" />
+
+                                {/* Password Text */}
+                                <span className="text-sm font-bold text-blue-700 font-mono tracking-wider">
+                                    {registrationSuccess?.password}
+                                </span>
+
+                                {/* Copy Icon Button */}
+                                <button
+                                    onClick={() => navigator.clipboard.writeText(registrationSuccess?.password)}
+                                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-md transition cursor-pointer"
+                                    title="Copy password"
+                                >
+                                    <Copy className="w-4 h-4" />
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -439,7 +478,7 @@ export default function AdminDashboard() {
                         </p>
                     </div>
 
-                    <Button className="w-full py-4 rounded-xl text-lg font-bold shadow-lg" onClick={() => { setRegistrationSuccess(null); setIsRegisterOpen(false); }}>
+                    <Button className="w-full py-4 rounded-xl text-lg font-bold shadow-lg flex items-center justify-center text-center" onClick={() => { setRegistrationSuccess(null); setIsRegisterOpen(false); }}>
                         I've Saved These Details
                     </Button>
                 </div>
@@ -465,8 +504,8 @@ export default function AdminDashboard() {
                                         {selectedHospital.name}
                                     </h3>
                                     <div className="flex items-center gap-2">
-                                        <span className="text-xs font-mono font-bold bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full border border-blue-100 uppercase tracking-tighter">
-                                            ID: {selectedHospital.id}
+                                        <span className="text-xs font-mono font-bold bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full border border-blue-100 uppercase tracking-tighter" title={selectedHospital.id}>
+                                            ID: {selectedHospital.id.slice(0, 8).toUpperCase()}...
                                         </span>
                                     </div>
                                 </div>
@@ -575,7 +614,17 @@ export default function AdminDashboard() {
                             )}
                         </div>
 
-                        <div className="flex justify-center pt-2">
+                        <div className="flex flex-col gap-2 pt-2">
+                            {!editingHospital && (
+                                <button
+                                    onClick={handleDeleteHospital}
+                                    disabled={savingHospital}
+                                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-red-50 text-red-600 hover:bg-red-600 hover:text-white font-bold transition-all border border-red-100 group mb-1 cursor-pointer"
+                                >
+                                    <Trash2 className="w-4 h-4 group-hover:animate-bounce" />
+                                    {savingHospital ? 'Deleting...' : 'Permanently Remove Hospital'}
+                                </button>
+                            )}
                             <Button
                                 variant="outline"
                                 onClick={() => { setSelectedHospital(null); setEditingHospital(false); }}

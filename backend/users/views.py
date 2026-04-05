@@ -1,5 +1,4 @@
 import os
-import threading
 from rest_framework import views, status
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -9,8 +8,6 @@ from django.contrib.auth.models import User
 from django.contrib.auth.tokens import default_token_generator
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
-from django.core.mail import send_mail
-from django.conf import settings
 from .serializers import (
     LoginSerializer, UserProfileSerializer, 
     PasswordResetRequestSerializer, PasswordResetConfirmSerializer
@@ -85,25 +82,46 @@ class PasswordResetRequestView(views.APIView):
                 token = default_token_generator.make_token(user)
                 uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
                 
-                # In production, use FRONTEND_URL. Development falls back to localhost.
-                frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:5173')
-                reset_link = f"{frontend_url}/reset-password?uidb64={uidb64}&token={token}"
+                # Pick the appropriate frontend URL from settings
+                from django.conf import settings
+                # If FRONTEND_URL is a string (legacy) or a list, handle both
+                frontend_urls = getattr(settings, 'FRONTEND_URL', ['http://localhost:5173'])
+                if isinstance(frontend_urls, str):
+                    frontend_urls = [url.strip() for url in frontend_urls.split(',') if url.strip()]
                 
-                def send_async_email(subject, message, from_email, recipient_list):
-                    try:
-                        send_mail(subject, message, from_email, recipient_list, fail_silently=False)
-                    except Exception as e:
-                        print(f"Async email failed: {str(e)}")
+                # Default to the first one, but try to match the requester's Origin
+                origin = request.headers.get('Origin')
+                frontend_url = origin if origin in frontend_urls else (frontend_urls[0] if frontend_urls else 'http://localhost:5173')
+                
+                reset_link = f"{frontend_url.rstrip('/')}/reset-password?uidb64={uidb64}&token={token}"
+                
+                from .utils import send_async_email
+                
+                subject = "Password Reset Request – SIH Medical"
+                html_body = f"""
+                <html>
+                <body style="font-family: Arial, sans-serif; line-height: 1.6;">
+                    <p>Dear User,</p>
 
-                threading.Thread(
-                    target=send_async_email,
-                    args=(
-                        "Password Reset Request | SIH Medical",
-                        f"Please click the link below to reset your password:\n\n{reset_link}\n\nIf you did not request this, ignore this email.",
-                        settings.DEFAULT_FROM_EMAIL,
-                        [email]
-                    )
-                ).start()
+                    <p>We received a request to reset your password for your SIH Medical account.</p>
+
+                    <p>Please click the button below to reset your password:</p>
+
+                    <p>
+                        <a href="{reset_link}" 
+                           style="background-color: #007BFF; color: #ffffff; padding: 10px 20px; 
+                                  text-decoration: none; border-radius: 5px; display: inline-block;">
+                           Reset Password
+                        </a>
+                    </p>
+
+                    <p>If you did not request this, please ignore this email.</p>
+
+                    <p>Best regards,<br>SIH Medical Team</p>
+                </body>
+                </html>
+                """
+                send_async_email(subject, html_body, [email])
             
             # Security best practice: Always return 200/success message even if the user didn't exist
             return Response({'message': 'If an account exists with this email, a reset link has been sent.'}, status=status.HTTP_200_OK)

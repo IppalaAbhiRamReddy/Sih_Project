@@ -27,6 +27,7 @@ from datetime import timedelta
 class HospitalViewSet(mixins.ListModelMixin, 
                      mixins.RetrieveModelMixin, 
                      mixins.UpdateModelMixin,
+                     mixins.DestroyModelMixin,
                      viewsets.GenericViewSet):
     """
     Manages existing Hospital records. 

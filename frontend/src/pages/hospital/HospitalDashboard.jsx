@@ -381,16 +381,16 @@ export default function HospitalDashboard() {
                         </button>
 
                         {manageAccountsOpen && (
-                            <div className="ml-9 mt-1 space-y-1 animate-in slide-in-from-top-1">
+                            <div className="ml-9 mt-1 space-y-1 animate-in slide-in-from-top-1 ">
                                 <button
                                     onClick={() => setActiveTab('manage-doctors')}
-                                    className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${activeTab === 'manage-doctors' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'}`}
+                                    className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors cursor-pointer ${activeTab === 'manage-doctors' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'}`}
                                 >
                                     Manage Doctors
                                 </button>
                                 <button
                                     onClick={() => setActiveTab('manage-staff')}
-                                    className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${activeTab === 'manage-staff' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'}`}
+                                    className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors  cursor-pointer ${activeTab === 'manage-staff' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'}`}
                                 >
                                     Manage Staff
                                 </button>
@@ -1175,7 +1175,7 @@ export default function HospitalDashboard() {
                                     </code>
                                     <button
                                         onClick={() => navigator.clipboard.writeText(registrationResult.tempPassword)}
-                                        className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                                        className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors cursor-pointer"
                                         title="Copy password"
                                     >
                                         <Copy className="w-4 h-4" />
@@ -1217,6 +1217,9 @@ export default function HospitalDashboard() {
                         value={editDoctorData.specialization}
                         onChange={(e) => setEditDoctorData({ ...editDoctorData, specialization: e.target.value })}
                     />
+                    <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-xs text-blue-700">
+                        Changing department will update doctor count on the Departments tab.
+                    </div>
                     <Button type="submit" disabled={submitting} className="bg-purple-600 hover:bg-purple-700 flex items-center justify-center gap-2 mt-4 cursor-pointer">
                         {submitting ? <><Loader className="w-4 h-4 animate-spin" /> Saving…</> : 'Save Changes'}
                     </Button>
